@@ -24,33 +24,9 @@ COLOR_DISCOUNT_HIGH = "#2E8B57"
 COLOR_OUT_OF_STOCK = "lightblue"
 
 
-# Поле ввода с контекстным меню
-class EntryWithContextMenu(tk.Entry):
-    def __init__(self, master=None, **kwargs):
-        super().__init__(master, **kwargs)
-        self.context_menu = tk.Menu(self, tearoff=0)
-        self.context_menu.add_command(
-            label="Вырезать", command=lambda: self.event_generate("<<Cut>>")
-        )
-        self.context_menu.add_command(
-            label="Копировать", command=lambda: self.event_generate("<<Copy>>")
-        )
-        self.context_menu.add_command(
-            label="Вставить", command=lambda: self.event_generate("<<Paste>>")
-        )
-        self.bind("<Button-3>", self.show_context_menu)
-
-        # Shift+Insert - вставка
-        self.bind("<Shift-Insert>", lambda e: self.event_generate("<<Paste>>"))
-        # Ctrl+V для английской раскладки
-        self.bind("<Control-v>", lambda e: self.event_generate("<<Paste>>"))
-        self.bind("<Control-V>", lambda e: self.event_generate("<<Paste>>"))
-
-    def show_context_menu(self, event):
-        self.context_menu.tk_popup(event.x_root, event.y_root)
 
 
-# ====================== Класс базы данных ======================
+# Класс базы данных
 class Database:
     def __init__(self, db_name):
         self.conn = sqlite3.connect(db_name)
@@ -275,7 +251,6 @@ class Database:
         address_by_index = {idx + 1: addr["id"] for idx, addr in enumerate(addresses)}
 
         for row in sheet.iter_rows(min_row=2, values_only=True):
-            # обрезаем до 8 колонок (A-H)
             row = row[:8]
             (
                 order_num,
@@ -336,7 +311,7 @@ class Database:
         wb.close()
 
 
-# ====================== Главное приложение ======================
+# Главное приложение
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -368,7 +343,7 @@ class App(tk.Tk):
             widget.destroy()
 
 
-# ====================== Окно входа ======================
+# Окно входа
 class LoginWindow(tk.Frame):
     def __init__(self, app):
         super().__init__(app, bg=COLOR_MAIN_BG)
@@ -392,7 +367,6 @@ class LoginWindow(tk.Frame):
             row=0, column=0, sticky="w", padx=5, pady=5
         )
 
-        # Валидация: не более 50 символов
         vcmd = (self.register(lambda new_value: len(new_value) <= 50), "%P")
         self.entry_login = EntryWithContextMenu(
             frame, font=("Times New Roman", 12), validate="key", validatecommand=vcmd
@@ -442,7 +416,7 @@ class LoginWindow(tk.Frame):
         self.app.show_products()
 
 
-# ====================== Окно товаров ======================
+# Окно товаров
 class ProductsWindow(tk.Frame):
     def __init__(self, app):
         super().__init__(app, bg=COLOR_MAIN_BG)
@@ -541,7 +515,7 @@ class ProductsWindow(tk.Frame):
         supplier_combo.pack(side=tk.LEFT, padx=5)
         supplier_combo.bind("<<ComboboxSelected>>", lambda e: self.load_products())
 
-        # Фильтр по категории
+        
         tk.Label(filter_frame, text="Категория:", bg=COLOR_MAIN_BG).pack(side=tk.LEFT, padx=5)
         self.category_var = tk.StringVar(value="Все категории")
         cursor.execute("SELECT name FROM categories ORDER BY name")
@@ -609,7 +583,7 @@ class ProductsWindow(tk.Frame):
             bg_color = COLOR_DISCOUNT_HIGH
         card.config(bg=bg_color)
 
-        # Левая часть - фото
+        
         img_frame = tk.Frame(card, bg=bg_color, width=120, height=120)
         img_frame.pack(side=tk.LEFT, padx=5, pady=5)
         img_frame.pack_propagate(False)
@@ -625,7 +599,6 @@ class ProductsWindow(tk.Frame):
         img_label.image = photo
         img_label.pack(expand=True, fill=tk.BOTH)
 
-        # Центральная часть - текст
         text_frame = tk.Frame(card, bg=bg_color)
         text_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
 
@@ -720,7 +693,6 @@ class ProductsWindow(tk.Frame):
             anchor="w",
         ).pack(anchor="w", fill=tk.X)
 
-        # Правая часть - скидка (ширина увеличена до 100 для трёхзначных процентов)
         if discount > 0:
             disc_frame = tk.Frame(card, bg=bg_color, width=100)
             disc_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5, pady=5)
@@ -738,7 +710,6 @@ class ProductsWindow(tk.Frame):
             disc_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5, pady=5)
             disc_frame.pack_propagate(False)
 
-        # Кнопки для администратора
         if self.app.current_user and self.app.current_user["role"] == "Администратор":
             btn_frame = tk.Frame(text_frame, bg=bg_color)
             btn_frame.pack(anchor="e", pady=2, fill=tk.X)
@@ -777,32 +748,30 @@ class ProductsWindow(tk.Frame):
             self.load_products()
 
 
-# ====================== Окно заказов ======================
+# Окно заказов
 class OrdersWindow(tk.Frame):
     def __init__(self, app):
         super().__init__(app, bg=COLOR_MAIN_BG)
         self.app = app
         self.pack(fill=tk.BOTH, expand=True)
 
-        # 1. Верхняя панель (согласно Модулю 2 и 4)
+        
         top_frame = tk.Frame(self, bg=COLOR_EXTRA_BG, height=40)
         top_frame.pack(fill=tk.X, side=tk.TOP)
         top_frame.pack_propagate(False)
 
-        # Отображение ФИО в правом верхнем углу
+
         user_text = "Гость"
         if self.app.current_user:
             user_text = f"{self.app.current_user['full_name']} ({self.app.current_user['role']})"
         
         tk.Label(top_frame, text=user_text, bg=COLOR_EXTRA_BG, font=("Times New Roman", 12)).pack(side=tk.RIGHT, padx=10)
 
-        # Кнопки навигации
         tk.Button(top_frame, text="Назад к товарам", command=self.app.show_products, bg=COLOR_ACCENT).pack(side=tk.LEFT, padx=10, pady=5)
         
         if self.app.current_user and self.app.current_user["role"] == "Администратор":
             tk.Button(top_frame, text="Добавить заказ", command=self.add_order, bg=COLOR_ACCENT).pack(side=tk.LEFT, padx=10, pady=5)
 
-        # 2. Область прокрутки
         self.canvas = tk.Canvas(self, bg=COLOR_MAIN_BG, highlightthickness=0)
         self.scrollbar = ttk.Scrollbar(self, orient=tk.VERTICAL, command=self.canvas.yview)
         self.scrollable_frame = tk.Frame(self.canvas, bg=COLOR_MAIN_BG)
@@ -816,7 +785,6 @@ class OrdersWindow(tk.Frame):
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Привязка прокрутки мыши (теперь работает везде)
         self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
 
         self.load_orders()
@@ -825,13 +793,11 @@ class OrdersWindow(tk.Frame):
         self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def load_orders(self):
-        # Очистка перед загрузкой
         for widget in self.scrollable_frame.winfo_children():
             widget.destroy()
 
         try:
             cursor = self.app.db.conn.cursor()
-            # Запрос данных (id, дата_заказа, дата_доставки, адрес, фио, код, статус)
             cursor.execute("""
                 SELECT o.id, o.order_date, o.delivery_date, a.address, u.full_name, o.pickup_code, o.status
                 FROM orders o
@@ -848,17 +814,13 @@ class OrdersWindow(tk.Frame):
             for row in rows:
                 self.create_order_card(row)
         except Exception as e:
-            # Если база данных выдаст ошибку, мы увидим её на экране
             tk.Label(self.scrollable_frame, text=f"Ошибка базы данных: {e}", fg="red", bg=COLOR_MAIN_BG).pack()
 
     def create_order_card(self, row):
-        # row[0]=id, row[1]=дата_зак, row[2]=дата_дост, row[3]=адрес, row[4]=фио, row[5]=код, row[6]=статус
-        
-        # Карточка (Макет из Модуля 4)
+       
         card = tk.Frame(self.scrollable_frame, bg=COLOR_MAIN_BG, relief=tk.RIDGE, bd=2)
         card.pack(fill=tk.X, padx=20, pady=10, ipady=10)
 
-        # Левая часть (Текстовые данные)
         left_box = tk.Frame(card, bg=COLOR_MAIN_BG)
         left_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
 
@@ -869,7 +831,6 @@ class OrdersWindow(tk.Frame):
         tk.Label(left_box, text=f"Адрес пункта выдачи: {addr}", font=("Times New Roman", 11), bg=COLOR_MAIN_BG, anchor="w", wraplength=600).pack(fill=tk.X)
         tk.Label(left_box, text=f"Дата заказа: {row[1]}", font=("Times New Roman", 11), bg=COLOR_MAIN_BG, anchor="w").pack(fill=tk.X)
 
-        # Правая часть (Дата доставки в рамке)
         right_box = tk.Frame(card, bg=COLOR_MAIN_BG, relief=tk.SOLID, bd=1, width=150)
         right_box.pack(side=tk.RIGHT, fill=tk.Y, padx=10, pady=5)
         right_box.pack_propagate(False)
@@ -877,12 +838,10 @@ class OrdersWindow(tk.Frame):
         tk.Label(right_box, text="Дата доставки", font=("Times New Roman", 10), bg=COLOR_MAIN_BG).pack(pady=(5, 0))
         tk.Label(right_box, text=f"{row[2]}", font=("Times New Roman", 11, "bold"), bg=COLOR_MAIN_BG).pack(expand=True)
 
-        # Кнопки действий (только для Администратора)
         if self.app.current_user and self.app.current_user["role"] == "Администратор":
             btn_frame = tk.Frame(left_box, bg=COLOR_MAIN_BG)
             btn_frame.pack(anchor="w", pady=(10, 0))
             
-            # Сохраняем ID заказа через lambda
             order_id = row[0]
             tk.Button(btn_frame, text="Редактировать", command=lambda i=order_id: OrderEditWindow(self.app, self, i), bg=COLOR_ACCENT).pack(side=tk.LEFT, padx=2)
             tk.Button(btn_frame, text="Удалить", command=lambda i=order_id: self.delete_order(i), bg=COLOR_ACCENT).pack(side=tk.LEFT, padx=2)
@@ -902,7 +861,7 @@ class OrdersWindow(tk.Frame):
         self.app.show_login()
 
 
-# ====================== Окно редактирования товара ======================
+# Окно редактирования товара
 class ProductEditWindow(tk.Toplevel):
     def __init__(self, app, parent_window, article=None):
         super().__init__(app)
@@ -940,61 +899,50 @@ class ProductEditWindow(tk.Toplevel):
         main_frame = tk.Frame(self, padx=10, pady=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Артикул
         tk.Label(main_frame, text="Артикул:").grid(row=0, column=0, sticky="w", pady=2)
         self.entry_article = tk.Entry(main_frame, state="readonly" if self.article else "normal")
         self.entry_article.grid(row=0, column=1, sticky="ew", pady=2)
         if not self.article:
             self.entry_article.insert(0, self.generate_article())
 
-        # Наименование
         tk.Label(main_frame, text="Наименование:").grid(row=1, column=0, sticky="w", pady=2)
         self.entry_name = tk.Entry(main_frame)
         self.entry_name.grid(row=1, column=1, sticky="ew", pady=2)
 
-        # Категория
         tk.Label(main_frame, text="Категория:").grid(row=2, column=0, sticky="w", pady=2)
         self.combo_category = ttk.Combobox(main_frame, values=self.categories, state="normal")
         self.combo_category.grid(row=2, column=1, sticky="ew", pady=2)
 
-        # Производитель
         tk.Label(main_frame, text="Производитель:").grid(row=3, column=0, sticky="w", pady=2)
         self.combo_manufacturer = ttk.Combobox(
             main_frame, values=self.manufacturers, state="normal"
         )
         self.combo_manufacturer.grid(row=3, column=1, sticky="ew", pady=2)
 
-        # Поставщик
         tk.Label(main_frame, text="Поставщик:").grid(row=4, column=0, sticky="w", pady=2)
         self.combo_supplier = ttk.Combobox(main_frame, values=self.suppliers, state="normal")
         self.combo_supplier.grid(row=4, column=1, sticky="ew", pady=2)
 
-        # Цена
         tk.Label(main_frame, text="Цена:").grid(row=5, column=0, sticky="w", pady=2)
         self.entry_price = tk.Entry(main_frame)
         self.entry_price.grid(row=5, column=1, sticky="ew", pady=2)
 
-        # Единица измерения
         tk.Label(main_frame, text="Единица измерения:").grid(row=6, column=0, sticky="w", pady=2)
         self.entry_unit = tk.Entry(main_frame)
         self.entry_unit.grid(row=6, column=1, sticky="ew", pady=2)
 
-        # Количество
         tk.Label(main_frame, text="Количество на складе:").grid(row=7, column=0, sticky="w", pady=2)
         self.entry_quantity = tk.Entry(main_frame)
         self.entry_quantity.grid(row=7, column=1, sticky="ew", pady=2)
 
-        # Скидка
         tk.Label(main_frame, text="Скидка (%):").grid(row=8, column=0, sticky="w", pady=2)
         self.entry_discount = tk.Entry(main_frame)
         self.entry_discount.grid(row=8, column=1, sticky="ew", pady=2)
 
-        # Описание
         tk.Label(main_frame, text="Описание:").grid(row=9, column=0, sticky="w", pady=2)
         self.text_description = tk.Text(main_frame, height=5, width=40)
         self.text_description.grid(row=9, column=1, sticky="ew", pady=2)
 
-        # Фото
         tk.Label(main_frame, text="Фото:").grid(row=10, column=0, sticky="w", pady=2)
         self.photo_path = tk.StringVar()
         tk.Entry(main_frame, textvariable=self.photo_path, state="readonly").grid(
@@ -1004,11 +952,9 @@ class ProductEditWindow(tk.Toplevel):
             row=10, column=2, padx=5
         )
 
-        # Предпросмотр
         self.preview_label = tk.Label(main_frame, text="Предпросмотр")
         self.preview_label.grid(row=11, column=1, pady=5)
 
-        # Кнопки
         btn_frame = tk.Frame(main_frame)
         btn_frame.grid(row=12, column=0, columnspan=3, pady=10)
         tk.Button(btn_frame, text="Сохранить", command=self.save_product, bg=COLOR_ACCENT).pack(
@@ -1204,7 +1150,7 @@ class ProductEditWindow(tk.Toplevel):
         self.destroy()
 
 
-# ====================== Окно редактирования заказа ======================
+# Окно редактирования заказа
 class OrderEditWindow(tk.Toplevel):
     def __init__(self, app, parent_window, order_id=None):
         super().__init__(app)
@@ -1414,7 +1360,7 @@ class OrderEditWindow(tk.Toplevel):
         self.destroy()
 
 
-# ====================== Запуск ======================
+# Запуск
 if __name__ == "__main__":
     required_files = [
         "user_import.xlsx",
