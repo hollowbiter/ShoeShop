@@ -28,9 +28,7 @@ COLOR_OUT_OF_STOCK = "lightblue"
 class EntryWithContextMenu(tk.Entry):
     def __init__(self, master=None, **kwargs):
         super().__init__(master, **kwargs)
-        self.context_menu = tk.Menu(self, tearoff=0)
-        
-
+        self.context_menu = tk.Menu(self, tearoff=0)  
     def show_context_menu(self, event):
         self.context_menu.tk_popup(event.x_root, event.y_root)
 
@@ -336,14 +334,17 @@ class App(tk.Tk):
         self.show_login()
 
     def show_login(self):
+        self.title("ООО Обувь - Вход")
         self.clear_window()
         LoginWindow(self)
 
     def show_products(self):
+        self.title("ООО Обувь - Товары")
         self.clear_window()
         ProductsWindow(self)
 
     def show_orders(self):
+        self.title("ООО Обувь - Заказы")
         self.clear_window()
         OrdersWindow(self)
 
@@ -372,42 +373,21 @@ class LoginWindow(tk.Frame):
         frame = tk.Frame(self, bg=COLOR_MAIN_BG)
         frame.pack(pady=10)
 
-        tk.Label(frame, text="Логин:", bg=COLOR_MAIN_BG, font=("Times New Roman", 12)).grid(
-            row=0, column=0, sticky="w", padx=5, pady=5
-        )
-
-        
-        vcmd = (self.register(lambda new_value: len(new_value) <= 50), "%P")
-        self.entry_login = EntryWithContextMenu(
-            frame, font=("Times New Roman", 12), validate="key", validatecommand=vcmd
-        )
+        tk.Label(frame, text="Логин:", bg=COLOR_MAIN_BG, font=("Times New Roman", 12)).grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        self.entry_login = EntryWithContextMenu(frame, font=("Times New Roman", 14), width=25, bd=3, relief=tk.RIDGE)
         self.entry_login.grid(row=0, column=1, padx=5, pady=5)
 
-        tk.Label(frame, text="Пароль:", bg=COLOR_MAIN_BG, font=("Times New Roman", 12)).grid(
-            row=1, column=0, sticky="w", padx=5, pady=5
-        )
-        self.entry_password = EntryWithContextMenu(
-            frame, show="*", font=("Times New Roman", 12), validate="key", validatecommand=vcmd
-        )
+        tk.Label(frame, text="Пароль:", bg=COLOR_MAIN_BG, font=("Times New Roman", 12)).grid(row=1, column=0, sticky="w", padx=5, pady=5)
+        self.entry_password = EntryWithContextMenu(frame, show="*", font=("Times New Roman", 14), width=25, bd=3, relief=tk.RIDGE)
         self.entry_password.grid(row=1, column=1, padx=5, pady=5)
 
         btn_frame = tk.Frame(self, bg=COLOR_MAIN_BG)
         btn_frame.pack(pady=10)
 
-        tk.Button(
-            btn_frame,
-            text="Войти",
-            command=self.login,
-            bg=COLOR_ACCENT,
-            font=("Times New Roman", 12),
-        ).pack(side=tk.LEFT, padx=5)
-        tk.Button(
-            btn_frame,
-            text="Войти как гость",
-            command=self.guest_login,
-            bg=COLOR_EXTRA_BG,
-            font=("Times New Roman", 12),
-        ).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Войти", command=self.login, bg=COLOR_ACCENT, 
+          font=("Times New Roman", 14), padx=15, pady=5).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Войти как гость", command=self.guest_login, bg=COLOR_EXTRA_BG,
+          font=("Times New Roman", 14), padx=15, pady=5).pack(side=tk.LEFT, padx=5)
 
     def login(self):
         login = self.entry_login.get().strip()
@@ -478,85 +458,66 @@ class ProductsWindow(tk.Frame):
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
         
-        def _on_mousewheel(event):
-            self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-
-        self.canvas.bind("<MouseWheel>", _on_mousewheel)
-        self.scrollable_frame.bind("<MouseWheel>", _on_mousewheel)
-        self.canvas.bind("<Button-4>", lambda e: self.canvas.yview_scroll(-1, "units"))
-        self.canvas.bind("<Button-5>", lambda e: self.canvas.yview_scroll(1, "units"))
-        self.scrollable_frame.bind("<Button-4>", lambda e: self.canvas.yview_scroll(-1, "units"))
-        self.scrollable_frame.bind("<Button-5>", lambda e: self.canvas.yview_scroll(1, "units"))
-
         self.load_products()
 
     def create_filter_panel(self):
         filter_frame = tk.Frame(self, bg=COLOR_MAIN_BG)
-        filter_frame.pack(fill=tk.X, pady=5)
+        filter_frame.pack(fill=tk.X, pady=5, padx=10)
 
-        tk.Label(filter_frame, text="Поиск:", bg=COLOR_MAIN_BG).pack(side=tk.LEFT, padx=5)
+        tk.Label(filter_frame, text="Поиск:", bg=COLOR_MAIN_BG, font=("Times New Roman", 11)).pack(side=tk.LEFT, padx=(5,2))
         self.search_var = tk.StringVar()
-        self.search_var.trace("w", lambda *args: self.load_products())
-        
-        search_entry = tk.Entry(filter_frame, textvariable=self.search_var, bd=2, relief=tk.SUNKEN)
-        search_entry.pack(side=tk.LEFT, padx=5)
+        self.search_var.trace('w', lambda *args: self.load_products())
+        search_entry = tk.Entry(filter_frame, textvariable=self.search_var, font=("Times New Roman", 11), width=25, bd=2, relief=tk.SUNKEN)
+        search_entry.pack(side=tk.LEFT, padx=(0,15))
 
-        tk.Label(filter_frame, text="Сортировка по кол-ву:", bg=COLOR_MAIN_BG).pack(
-            side=tk.LEFT, padx=5
-        )
+        tk.Label(filter_frame, text="Сортировка:", bg=COLOR_MAIN_BG, font=("Times New Roman", 11)).pack(side=tk.LEFT, padx=(5,2))
         self.sort_var = tk.StringVar(value="Нет")
-        sort_combo = ttk.Combobox(
-            filter_frame,
-            textvariable=self.sort_var,
-            values=["Нет", "по возрастанию", "по убыванию"],
-            state="readonly",
-        )
-        sort_combo.pack(side=tk.LEFT, padx=5)
-        sort_combo.bind("<<ComboboxSelected>>", lambda e: self.load_products())
+        self.sort_var.trace('w', lambda *args: self.load_products())
+        sort_combo = ttk.Combobox(filter_frame, textvariable=self.sort_var,
+                                values=["Нет", "По возрастанию", "По убыванию"],
+                                state="readonly", width=15)
+        sort_combo.pack(side=tk.LEFT, padx=(0,15))
 
-        tk.Label(filter_frame, text="Поставщик:", bg=COLOR_MAIN_BG).pack(side=tk.LEFT, padx=5)
+        tk.Label(filter_frame, text="Поставщик:", bg=COLOR_MAIN_BG, font=("Times New Roman", 11)).pack(side=tk.LEFT, padx=(5,2))
         self.supplier_var = tk.StringVar(value="Все поставщики")
+        self.supplier_var.trace('w', lambda *args: self.load_products())
         cursor = self.app.db.conn.cursor()
         cursor.execute("SELECT name FROM suppliers ORDER BY name")
-        suppliers = ["Все поставщики"] + [row["name"] for row in cursor.fetchall()]
-        supplier_combo = ttk.Combobox(
-            filter_frame, textvariable=self.supplier_var, values=suppliers, state="readonly"
-        )
-        supplier_combo.pack(side=tk.LEFT, padx=5)
-        supplier_combo.bind("<<ComboboxSelected>>", lambda e: self.load_products())
+        suppliers = ["Все поставщики"] + [row['name'] for row in cursor.fetchall()]
+        supplier_combo = ttk.Combobox(filter_frame, textvariable=self.supplier_var, values=suppliers, state="readonly", width=18)
+        supplier_combo.pack(side=tk.LEFT, padx=(0,15))
 
-        
-        tk.Label(filter_frame, text="Категория:", bg=COLOR_MAIN_BG).pack(side=tk.LEFT, padx=5)
+        tk.Label(filter_frame, text="Категория:", bg=COLOR_MAIN_BG, font=("Times New Roman", 11)).pack(side=tk.LEFT, padx=(5,2))
         self.category_var = tk.StringVar(value="Все категории")
+        self.category_var.trace('w', lambda *args: self.load_products())
         cursor.execute("SELECT name FROM categories ORDER BY name")
         categories = ["Все категории"] + [row['name'] for row in cursor.fetchall()]
-        category_combo = ttk.Combobox(filter_frame, textvariable=self.category_var, values=categories, state="readonly")
-        category_combo.pack(side=tk.LEFT, padx=5)
-        category_combo.bind("<<ComboboxSelected>>", lambda e: self.load_products())
+        category_combo = ttk.Combobox(filter_frame, textvariable=self.category_var, values=categories, state="readonly", width=15)
+        category_combo.pack(side=tk.LEFT, padx=(0,5))
 
     def load_products(self):
         for widget in self.scrollable_frame.winfo_children():
             widget.destroy()
 
         cursor = self.app.db.conn.cursor()
-        query = """
+        query = '''
             SELECT p.*, cat.name as category_name, man.name as manufacturer_name, sup.name as supplier_name
             FROM products p
             LEFT JOIN categories cat ON p.category_id = cat.id
             LEFT JOIN manufacturers man ON p.manufacturer_id = man.id
             LEFT JOIN suppliers sup ON p.supplier_id = sup.id
-        """
+        '''
         conditions = []
         params = []
 
-        if hasattr(self, "search_var") and self.search_var.get().strip():
+        if hasattr(self, 'search_var') and self.search_var.get().strip():
             search = self.search_var.get().strip()
-            conditions.append("""
+            conditions.append('''
                 (p.article LIKE ? OR p.name LIKE ? OR p.description LIKE ? OR cat.name LIKE ? OR man.name LIKE ? OR sup.name LIKE ?)
-            """)
-            params.extend([f"%{search}%"] * 6)
+            ''')
+            params.extend([f'%{search}%'] * 6)
 
-        if hasattr(self, "supplier_var") and self.supplier_var.get() != "Все поставщики":
+        if hasattr(self, 'supplier_var') and self.supplier_var.get() != "Все поставщики":
             conditions.append("sup.name = ?")
             params.append(self.supplier_var.get())
 
@@ -567,7 +528,7 @@ class ProductsWindow(tk.Frame):
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
 
-        if hasattr(self, "sort_var"):
+        if hasattr(self, 'sort_var'):
             if self.sort_var.get() == "по возрастанию":
                 query += " ORDER BY p.quantity ASC"
             elif self.sort_var.get() == "по убыванию":
@@ -579,8 +540,21 @@ class ProductsWindow(tk.Frame):
         for prod in products:
             self.create_product_card(prod)
 
+
         self.scrollable_frame.update_idletasks()
-        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        self.canvas.update_idletasks()
+        
+        bbox = self.canvas.bbox("all")
+        canvas_height = self.canvas.winfo_height()
+        
+        if bbox and bbox[3] <= canvas_height:
+            
+            self.canvas.configure(scrollregion=(0, 0, 0, 0))
+            self.scrollbar.pack_forget()
+        else:
+            
+            self.canvas.configure(scrollregion=bbox)
+            self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
     def create_product_card(self, prod):
         card = tk.Frame(self.scrollable_frame, bg=COLOR_MAIN_BG, relief=tk.RAISED, bd=1)
@@ -594,18 +568,18 @@ class ProductsWindow(tk.Frame):
         card.config(bg=bg_color)
 
         
-        img_frame = tk.Frame(card, bg=bg_color, width=120, height=120)
+        img_frame = tk.Frame(card, bg=COLOR_MAIN_BG, width=120, height=120)
         img_frame.pack(side=tk.LEFT, padx=5, pady=5)
         img_frame.pack_propagate(False)
 
-        img_path = prod["photo"]
+        img_path = prod['photo']
         if img_path and os.path.exists(img_path):
             pil_img = Image.open(img_path)
         else:
             pil_img = Image.open(DEFAULT_IMAGE)
         pil_img.thumbnail((120, 120), Image.Resampling.LANCZOS)
         photo = ImageTk.PhotoImage(pil_img)
-        img_label = tk.Label(img_frame, image=photo, bg=bg_color)
+        img_label = tk.Label(img_frame, image=photo, bg=COLOR_MAIN_BG)
         img_label.image = photo
         img_label.pack(expand=True, fill=tk.BOTH)
 
@@ -704,21 +678,19 @@ class ProductsWindow(tk.Frame):
         ).pack(anchor="w", fill=tk.X)
 
         if discount > 0:
-            disc_frame = tk.Frame(card, bg=bg_color, width=100)
-            disc_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5, pady=5)
+            disc_frame = tk.Frame(card, bg=COLOR_MAIN_BG, width=110, height=110, relief=tk.RIDGE, bd=2)
+            disc_frame.pack(side=tk.RIGHT, padx=5, pady=5)
             disc_frame.pack_propagate(False)
-            disc_label = tk.Label(
-                disc_frame,
-                text=f"{discount}%",
-                font=("Times New Roman", 24, "bold"),
-                fg="red",
-                bg=bg_color,
-            )
-            disc_label.pack(expand=True)
-        else:
-            disc_frame = tk.Frame(card, bg=bg_color, width=100)
-            disc_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5, pady=5)
-            disc_frame.pack_propagate(False)
+            inner_frame = tk.Frame(disc_frame, bg=COLOR_MAIN_BG)
+            inner_frame.pack(expand=True)
+            tk.Label(inner_frame, text="Скидка", bg=COLOR_MAIN_BG,
+                    font=("Times New Roman", 10, "bold")).pack(anchor="center")
+            tk.Label(inner_frame, text=f"{int(discount)}%", bg=COLOR_MAIN_BG,
+                    font=("Times New Roman", 28, "bold"), fg="red").pack(anchor="center")
+        #else:
+            #disc_frame = tk.Frame(card, bg=bg_color, width=110)
+            #disc_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5, pady=5)
+            #disc_frame.pack_propagate(False)
 
         if self.app.current_user and self.app.current_user["role"] == "Администратор":
             btn_frame = tk.Frame(text_frame, bg=bg_color)
@@ -793,12 +765,7 @@ class OrdersWindow(tk.Frame):
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
-
         self.load_orders()
-
-    def _on_mousewheel(self, event):
-        self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def load_orders(self):
         for widget in self.scrollable_frame.winfo_children():
@@ -981,15 +948,21 @@ class ProductEditWindow(tk.Toplevel):
 
     def generate_article(self):
         cursor = self.app.db.conn.cursor()
-        cursor.execute("SELECT article FROM products ORDER BY article DESC LIMIT 1")
-        row = cursor.fetchone()
-        if row:
-            last = row["article"]
-            match = re.search(r"\d+", last)
+        cursor.execute("SELECT article FROM products")
+        existing = [row['article'] for row in cursor.fetchall()]
+        max_num = 0
+        for art in existing:
+            match = re.search(r'A(\d+)T4', art)
             if match:
-                num = int(match.group()) + 1
-                return f"A{num}T4"
-        return "A001T4"
+                num = int(match.group(1))
+                if num > max_num:
+                    max_num = num
+        base = max_num + 1
+        while True:
+            candidate = f"A{base}T4"
+            if candidate not in existing:
+                return candidate
+            base += 1
 
     def load_product_data(self):
         cursor = self.app.db.conn.cursor()
@@ -1299,7 +1272,7 @@ class OrderEditWindow(tk.Toplevel):
     def save_order(self):
         try:
             order_id = int(self.entry_id.get())
-        except Exception:
+        except:
             messagebox.showerror("Ошибка", "Некорректный номер заказа")
             return
         order_date = self.entry_order_date.get().strip()
@@ -1319,50 +1292,44 @@ class OrderEditWindow(tk.Toplevel):
 
         items = []
         if items_str:
-            parts = [p.strip() for p in items_str.split(",")]
+            parts = [p.strip() for p in items_str.split(',')]
             if len(parts) % 2 != 0:
-                messagebox.showerror(
-                    "Ошибка",
-                    "Нечетное количество элементов в составе заказа. Должны быть пары артикул, количество",
-                )
+                messagebox.showerror("Ошибка", "Нечетное количество элементов в составе заказа. Должны быть пары артикул, количество")
                 return
             for i in range(0, len(parts), 2):
                 article = parts[i]
                 try:
-                    qty = int(parts[i + 1])
-                except Exception:
-                    messagebox.showerror(
-                        "Ошибка", f"Количество для артикула {article} должно быть целым числом"
-                    )
+                    qty = int(parts[i+1])
+                except:
+                    messagebox.showerror("Ошибка", f"Количество для артикула {article} должно быть целым числом")
                     return
                 items.append((article, qty))
 
+        # Проверка наличия всех артикулов в базе
+        cursor = self.app.db.conn.cursor()
+        for article, _ in items:
+            cursor.execute("SELECT article FROM products WHERE article=?", (article,))
+            if not cursor.fetchone():
+                messagebox.showerror("Ошибка", f"Товар с артикулом '{article}' не найден в базе")
+                return
+
         cursor = self.app.db.conn.cursor()
         if self.order_id:
-            cursor.execute(
-                """
+            cursor.execute('''
                 UPDATE orders SET order_date=?, delivery_date=?, address_id=?, user_id=?, pickup_code=?, status=?
                 WHERE id=?
-            """,
-                (order_date, delivery_date, address_id, user_id, code, status, order_id),
-            )
+            ''', (order_date, delivery_date, address_id, user_id, code, status, order_id))
             cursor.execute("DELETE FROM order_items WHERE order_id=?", (order_id,))
         else:
-            cursor.execute(
-                """
+            cursor.execute('''
                 INSERT INTO orders (id, order_date, delivery_date, address_id, user_id, pickup_code, status)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-                (order_id, order_date, delivery_date, address_id, user_id, code, status),
-            )
+            ''', (order_id, order_date, delivery_date, address_id, user_id, code, status))
 
         for article, qty in items:
-            cursor.execute(
-                """
+            cursor.execute('''
                 INSERT INTO order_items (order_id, product_article, quantity) VALUES (?, ?, ?)
-            """,
-                (order_id, article, qty),
-            )
+            ''', (order_id, article, qty))
 
         self.app.db.conn.commit()
         self.parent.load_orders()
