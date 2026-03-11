@@ -24,6 +24,16 @@ COLOR_DISCOUNT_HIGH = "#2E8B57"
 COLOR_OUT_OF_STOCK = "lightblue"
 
 
+# Поле ввода с контекстным меню
+class EntryWithContextMenu(tk.Entry):
+    def __init__(self, master=None, **kwargs):
+        super().__init__(master, **kwargs)
+        self.context_menu = tk.Menu(self, tearoff=0)
+        
+
+    def show_context_menu(self, event):
+        self.context_menu.tk_popup(event.x_root, event.y_root)
+
 
 # Класс базы данных
 class Database:
