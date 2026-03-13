@@ -470,13 +470,17 @@ class ProductsWindow(tk.Frame):
         search_entry = tk.Entry(filter_frame, textvariable=self.search_var, font=("Times New Roman", 11), width=25, bd=2, relief=tk.SUNKEN)
         search_entry.pack(side=tk.LEFT, padx=(0,15))
 
-        tk.Label(filter_frame, text="Сортировка:", bg=COLOR_MAIN_BG, font=("Times New Roman", 11)).pack(side=tk.LEFT, padx=(5,2))
+        tk.Label(filter_frame, text="Сортировка по кол-ву:", bg=COLOR_MAIN_BG).pack(side=tk.LEFT, padx=5)
         self.sort_var = tk.StringVar(value="Нет")
-        self.sort_var.trace('w', lambda *args: self.load_products())
-        sort_combo = ttk.Combobox(filter_frame, textvariable=self.sort_var,
-                                values=["Нет", "По возрастанию", "По убыванию"],
-                                state="readonly", width=15)
-        sort_combo.pack(side=tk.LEFT, padx=(0,15))
+        self.sort_var.trace('w', lambda *args: self.load_products())  # <-- добавить эту строку
+        sort_combo = ttk.Combobox(
+            filter_frame,
+            textvariable=self.sort_var,
+            values=["Нет", "По возрастанию", "По убыванию"],
+            state="readonly",
+            width=20
+        )
+        sort_combo.pack(side=tk.LEFT, padx=5)
 
         tk.Label(filter_frame, text="Поставщик:", bg=COLOR_MAIN_BG, font=("Times New Roman", 11)).pack(side=tk.LEFT, padx=(5,2))
         self.supplier_var = tk.StringVar(value="Все поставщики")
@@ -496,6 +500,7 @@ class ProductsWindow(tk.Frame):
         category_combo.pack(side=tk.LEFT, padx=(0,5))
 
     def load_products(self):
+        print(self.sort_var.get())
         for widget in self.scrollable_frame.winfo_children():
             widget.destroy()
 
@@ -528,10 +533,12 @@ class ProductsWindow(tk.Frame):
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
 
+        # Сортировка по количеству
         if hasattr(self, 'sort_var'):
-            if self.sort_var.get() == "по возрастанию":
+            current_sort = self.sort_var.get()
+            if current_sort == "По возрастанию":
                 query += " ORDER BY p.quantity ASC"
-            elif self.sort_var.get() == "по убыванию":
+            elif current_sort == "По убыванию":
                 query += " ORDER BY p.quantity DESC"
 
         cursor.execute(query, params)
@@ -540,21 +547,19 @@ class ProductsWindow(tk.Frame):
         for prod in products:
             self.create_product_card(prod)
 
-
         self.scrollable_frame.update_idletasks()
         self.canvas.update_idletasks()
-        
         bbox = self.canvas.bbox("all")
         canvas_height = self.canvas.winfo_height()
-        
+
         if bbox and bbox[3] <= canvas_height:
-            
-            self.canvas.configure(scrollregion=(0, 0, 0, 0))
+            self.canvas.configure(scrollregion=bbox)
             self.scrollbar.pack_forget()
+            self.scroll_enabled = False
         else:
-            
             self.canvas.configure(scrollregion=bbox)
             self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            self.scroll_enabled = True
 
     def create_product_card(self, prod):
         card = tk.Frame(self.scrollable_frame, bg=COLOR_MAIN_BG, relief=tk.RAISED, bd=1)
