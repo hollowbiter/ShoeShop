@@ -23,6 +23,7 @@ COLOR_ACCENT = "#00FA9A"
 COLOR_DISCOUNT_HIGH = "#2E8B57"
 COLOR_OUT_OF_STOCK = "lightblue"
 
+# Константы для устранения дублирования литералов (S1192)
 FONT_DEFAULT = ("Times New Roman", 12)
 FONT_TITLE = ("Times New Roman", 16)
 FONT_ENTRY = ("Times New Roman", 14)
@@ -32,6 +33,11 @@ FONT_BOLD = ("Times New Roman", 12, "bold")
 TITLE_ERROR = "Ошибка"
 ROLE_ADMIN = "Администратор"
 ROLE_MANAGER = "Менеджер"
+VALUE_ALL_SUPPLIERS = "Все поставщики"
+VALUE_ALL_CATEGORIES = "Все категории"
+STATE_NORMAL = "normal"
+STATE_READONLY = "readonly"
+TEXT_START = "1.0"
 
 
 # Поле ввода с контекстным меню
@@ -211,22 +217,39 @@ class Database:
         self.conn.commit()
         wb.close()
 
+    # Хелпер для снижения сложности import_orders
+    def _parse_date(self, date_str):
+        if not date_str:
+            return None
+        date_str = str(date_str).strip()
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%d.%m.%Y", "%d.%m.%Y %H:%M:%S", "%Y-%m-%d"):
+            try:
+                dt = datetime.datetime.strptime(date_str, fmt)
+                return dt.strftime("%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                continue
+        return None
+
+    # Хелпер для снижения сложности import_orders
+    def _process_order_items(self, cursor, order_num, items_str):
+        if not items_str:
+            return
+        parts = [p.strip() for p in items_str.split(",")]
+        for i in range(0, len(parts) - 1, 2):
+            article = parts[i]
+            try:
+                qty = int(parts[i + 1])
+            except ValueError:
+                qty = 1
+            cursor.execute(
+                "INSERT INTO order_items (order_id, product_article, quantity) VALUES (?, ?, ?)",
+                (order_num, article, qty),
+            )
+
     def import_orders(self):
         wb = openpyxl.load_workbook("Заказ_import.xlsx", data_only=True)
         sheet = wb.active
         cursor = self.conn.cursor()
-
-        def parse_date(date_str):
-            if not date_str:
-                return None
-            date_str = str(date_str).strip()
-            for fmt in ("%Y-%m-%d %H:%M:%S", "%d.%m.%Y", "%d.%m.%Y %H:%M:%S", "%Y-%m-%d"):
-                try:
-                    dt = datetime.datetime.strptime(date_str, fmt)
-                    return dt.strftime("%Y-%m-%d %H:%M:%S")
-                except ValueError:
-                    continue
-            return None
 
         cursor.execute("SELECT id, full_name FROM users")
         user_by_name = {u["full_name"]: u["id"] for u in cursor.fetchall()}
@@ -242,8 +265,8 @@ class Database:
             if not order_num:
                 continue
 
-            order_date_parsed = parse_date(order_date)
-            delivery_date_parsed = parse_date(delivery_date)
+            order_date_parsed = self._parse_date(order_date)
+            delivery_date_parsed = self._parse_date(delivery_date)
 
             address_id = None
             if address_num and isinstance(address_num, (int, str)) and str(address_num).isdigit():
@@ -261,18 +284,8 @@ class Database:
                 (order_num, order_date_parsed, delivery_date_parsed, address_id, user_id, str(pickup_code).strip(), status.strip() if status else ""),
             )
 
-            if items_str:
-                parts = [p.strip() for p in items_str.split(",")]
-                for i in range(0, len(parts) - 1, 2):
-                    article = parts[i]
-                    try:
-                        qty = int(parts[i + 1])
-                    except ValueError:
-                        qty = 1
-                    cursor.execute(
-                        "INSERT INTO order_items (order_id, product_article, quantity) VALUES (?, ?, ?)",
-                        (order_num, article, qty),
-                    )
+            self._process_order_items(cursor, order_num, items_str)
+            
         self.conn.commit()
         wb.close()
 
@@ -330,11 +343,11 @@ class LoginWindow(tk.Frame):
         frame = tk.Frame(self, bg=COLOR_MAIN_BG)
         frame.pack(pady=10)
 
-        tk.Label(frame, text="Логин:", bg=COLOR_MAIN_BG, font=FONT_DEFAULT).grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        tk.Label(frame, text="Логин:", bg=COLOR_MAIN_BG, font=FONT_DEFAULT).grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
         self.entry_login = EntryWithContextMenu(frame, font=FONT_ENTRY, width=25, bd=3, relief=tk.RIDGE)
         self.entry_login.grid(row=0, column=1, padx=5, pady=5)
 
-        tk.Label(frame, text="Пароль:", bg=COLOR_MAIN_BG, font=FONT_DEFAULT).grid(row=1, column=0, sticky="w", padx=5, pady=5)
+        tk.Label(frame, text="Пароль:", bg=COLOR_MAIN_BG, font=FONT_DEFAULT).grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
         self.entry_password = EntryWithContextMenu(frame, show="*", font=FONT_ENTRY, width=25, bd=3, relief=tk.RIDGE)
         self.entry_password.grid(row=1, column=1, padx=5, pady=5)
 
@@ -409,43 +422,40 @@ class ProductsWindow(tk.Frame):
         filter_frame.pack(fill=tk.X, pady=5, padx=10)
 
         # Поиск
-        tk.Label(filter_frame, text="Поиск:", bg=COLOR_MAIN_BG, font=("Times New Roman", 11)).pack(side=tk.LEFT, padx=(5,2))
+        tk.Label(filter_frame, text="Поиск:", bg=COLOR_MAIN_BG, font=FONT_SMALL).pack(side=tk.LEFT, padx=(5,2))
         self.search_var = tk.StringVar()
         self.search_var.trace('w', lambda *args: self.load_products())
-        search_entry = tk.Entry(filter_frame, textvariable=self.search_var, font=("Times New Roman", 11), width=25, bd=2, relief=tk.SUNKEN)
+        search_entry = tk.Entry(filter_frame, textvariable=self.search_var, font=FONT_SMALL, width=25, bd=2, relief=tk.SUNKEN)
         search_entry.pack(side=tk.LEFT, padx=(0,15))
 
         # Сортировка
-        tk.Label(filter_frame, text="Сорт.:", bg=COLOR_MAIN_BG, font=("Times New Roman", 11)).pack(side=tk.LEFT, padx=(5,2))
+        tk.Label(filter_frame, text="Сорт.:", bg=COLOR_MAIN_BG, font=FONT_SMALL).pack(side=tk.LEFT, padx=(5,2))
         self.sort_var = tk.StringVar(value="Нет")
         self.sort_var.trace('w', lambda *args: self.load_products())
-        sort_combo = ttk.Combobox(filter_frame, textvariable=self.sort_var, values=["Нет", "По возрастанию", "По убыванию"], state="readonly", width=15)
+        sort_combo = ttk.Combobox(filter_frame, textvariable=self.sort_var, values=["Нет", "По возрастанию", "По убыванию"], state=STATE_READONLY, width=15)
         sort_combo.pack(side=tk.LEFT, padx=(0,15))
 
         # Поставщик
-        tk.Label(filter_frame, text="Поставщик:", bg=COLOR_MAIN_BG, font=("Times New Roman", 11)).pack(side=tk.LEFT, padx=(5,2))
-        self.supplier_var = tk.StringVar(value="Все поставщики")
+        tk.Label(filter_frame, text="Поставщик:", bg=COLOR_MAIN_BG, font=FONT_SMALL).pack(side=tk.LEFT, padx=(5,2))
+        self.supplier_var = tk.StringVar(value=VALUE_ALL_SUPPLIERS)
         self.supplier_var.trace('w', lambda *args: self.load_products())
         cursor = self.app.db.conn.cursor()
         cursor.execute("SELECT name FROM suppliers ORDER BY name")
-        suppliers = ["Все поставщики"] + [row['name'] for row in cursor.fetchall()]
-        supplier_combo = ttk.Combobox(filter_frame, textvariable=self.supplier_var, values=suppliers, state="readonly", width=18)
+        suppliers = [VALUE_ALL_SUPPLIERS] + [row['name'] for row in cursor.fetchall()]
+        supplier_combo = ttk.Combobox(filter_frame, textvariable=self.supplier_var, values=suppliers, state=STATE_READONLY, width=18)
         supplier_combo.pack(side=tk.LEFT, padx=(0,15))
 
         # Категория
-        tk.Label(filter_frame, text="Категория:", bg=COLOR_MAIN_BG, font=("Times New Roman", 11)).pack(side=tk.LEFT, padx=(5,2))
-        self.category_var = tk.StringVar(value="Все категории")
+        tk.Label(filter_frame, text="Категория:", bg=COLOR_MAIN_BG, font=FONT_SMALL).pack(side=tk.LEFT, padx=(5,2))
+        self.category_var = tk.StringVar(value=VALUE_ALL_CATEGORIES)
         self.category_var.trace('w', lambda *args: self.load_products())
         cursor.execute("SELECT name FROM categories ORDER BY name")
-        categories = ["Все категории"] + [row['name'] for row in cursor.fetchall()]
-        category_combo = ttk.Combobox(filter_frame, textvariable=self.category_var, values=categories, state="readonly", width=15)
+        categories = [VALUE_ALL_CATEGORIES] + [row['name'] for row in cursor.fetchall()]
+        category_combo = ttk.Combobox(filter_frame, textvariable=self.category_var, values=categories, state=STATE_READONLY, width=15)
         category_combo.pack(side=tk.LEFT, padx=(0,5))
 
-    def load_products(self):
-        for widget in self.scrollable_frame.winfo_children():
-            widget.destroy()
-
-        cursor = self.app.db.conn.cursor()
+    # Хелпер для снижения сложности load_products
+    def _build_product_query(self):
         query = '''
             SELECT p.*, cat.name as category_name, man.name as manufacturer_name, sup.name as supplier_name
             FROM products p
@@ -460,11 +470,11 @@ class ProductsWindow(tk.Frame):
             conditions.append('(p.article LIKE ? OR p.name LIKE ? OR p.description LIKE ? OR cat.name LIKE ? OR man.name LIKE ? OR sup.name LIKE ?)')
             params.extend([f'%{search}%'] * 6)
 
-        if hasattr(self, 'supplier_var') and self.supplier_var.get() != "Все поставщики":
+        if hasattr(self, 'supplier_var') and self.supplier_var.get() != VALUE_ALL_SUPPLIERS:
             conditions.append("sup.name = ?")
             params.append(self.supplier_var.get())
 
-        if hasattr(self, 'category_var') and self.category_var.get() != "Все категории":
+        if hasattr(self, 'category_var') and self.category_var.get() != VALUE_ALL_CATEGORIES:
             conditions.append("cat.name = ?")
             params.append(self.category_var.get())
 
@@ -472,8 +482,19 @@ class ProductsWindow(tk.Frame):
             query += " WHERE " + " AND ".join(conditions)
 
         if hasattr(self, 'sort_var'):
-            if self.sort_var.get() == "По возрастанию": query += " ORDER BY p.quantity ASC"
-            elif self.sort_var.get() == "По убыванию": query += " ORDER BY p.quantity DESC"
+            if self.sort_var.get() == "По возрастанию":
+                query += " ORDER BY p.quantity ASC"
+            elif self.sort_var.get() == "По убыванию":
+                query += " ORDER BY p.quantity DESC"
+
+        return query, params
+
+    def load_products(self):
+        for widget in self.scrollable_frame.winfo_children():
+            widget.destroy()
+
+        cursor = self.app.db.conn.cursor()
+        query, params = self._build_product_query()
 
         try:
             cursor.execute(query, params)
@@ -500,8 +521,10 @@ class ProductsWindow(tk.Frame):
         card.pack(fill=tk.X, padx=10, pady=5, ipadx=5, ipady=5)
 
         bg_color = COLOR_MAIN_BG
-        if prod["quantity"] == 0: bg_color = COLOR_OUT_OF_STOCK
-        elif prod["discount"] > 15: bg_color = COLOR_DISCOUNT_HIGH
+        if prod["quantity"] == 0:
+            bg_color = COLOR_OUT_OF_STOCK
+        elif prod["discount"] > 15:
+            bg_color = COLOR_DISCOUNT_HIGH
         card.config(bg=bg_color)
         
         img_frame = tk.Frame(card, bg=COLOR_MAIN_BG, width=120, height=120)
@@ -509,8 +532,10 @@ class ProductsWindow(tk.Frame):
         img_frame.pack_propagate(False)
 
         img_path = prod['photo']
-        if img_path and os.path.exists(img_path): pil_img = Image.open(img_path)
-        else: pil_img = Image.open(DEFAULT_IMAGE)
+        if img_path and os.path.exists(img_path):
+            pil_img = Image.open(img_path)
+        else:
+            pil_img = Image.open(DEFAULT_IMAGE)
         
         pil_img.thumbnail((120, 120), Image.Resampling.LANCZOS)
         photo = ImageTk.PhotoImage(pil_img)
@@ -521,20 +546,21 @@ class ProductsWindow(tk.Frame):
         text_frame = tk.Frame(card, bg=bg_color)
         text_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        tk.Label(text_frame, text=f"{prod['category_name'] or ''} | {prod['name'] or ''}", font=FONT_BOLD, bg=bg_color, anchor="w").pack(anchor="w", fill=tk.X)
+        tk.Label(text_frame, text=f"{prod['category_name'] or ''} | {prod['name'] or ''}", font=FONT_BOLD, bg=bg_color, anchor=tk.W).pack(anchor=tk.W, fill=tk.X)
 
         desc = prod["description"] or ""
-        if len(desc) > 100: desc = desc[:100] + "..."
-        tk.Label(text_frame, text=f"Описание товара: {desc}", bg=bg_color, font=FONT_SMALL, wraplength=400, justify=tk.LEFT, anchor="w").pack(anchor="w", fill=tk.X)
-        tk.Label(text_frame, text=f"Производитель: {prod['manufacturer_name'] or ''}", bg=bg_color, font=FONT_SMALL, anchor="w").pack(anchor="w", fill=tk.X)
-        tk.Label(text_frame, text=f"Поставщик: {prod['supplier_name'] or ''}", bg=bg_color, font=FONT_SMALL, anchor="w").pack(anchor="w", fill=tk.X)
+        if len(desc) > 100:
+            desc = desc[:100] + "..."
+        tk.Label(text_frame, text=f"Описание товара: {desc}", bg=bg_color, font=FONT_SMALL, wraplength=400, justify=tk.LEFT, anchor=tk.W).pack(anchor=tk.W, fill=tk.X)
+        tk.Label(text_frame, text=f"Производитель: {prod['manufacturer_name'] or ''}", bg=bg_color, font=FONT_SMALL, anchor=tk.W).pack(anchor=tk.W, fill=tk.X)
+        tk.Label(text_frame, text=f"Поставщик: {prod['supplier_name'] or ''}", bg=bg_color, font=FONT_SMALL, anchor=tk.W).pack(anchor=tk.W, fill=tk.X)
 
         original_price = prod["price"]
         discount = prod["discount"] or 0
         final_price = original_price * (1 - discount / 100)
 
         price_frame = tk.Frame(text_frame, bg=bg_color)
-        price_frame.pack(anchor="w", fill=tk.X, pady=2)
+        price_frame.pack(anchor=tk.W, fill=tk.X, pady=2)
 
         if discount > 0:
             tk.Label(price_frame, text=f"{original_price:.2f} руб.", fg="red", bg=bg_color, font=("Times New Roman", 10, "overstrike")).pack(side=tk.LEFT, padx=(0, 5))
@@ -542,8 +568,8 @@ class ProductsWindow(tk.Frame):
         else:
             tk.Label(price_frame, text=f"{original_price:.2f} руб.", font=FONT_SMALL, bg=bg_color).pack(side=tk.LEFT)
 
-        tk.Label(text_frame, text=f"Единица измерения: {prod['unit'] or ''}", bg=bg_color, font=FONT_SMALL, anchor="w").pack(anchor="w", fill=tk.X)
-        tk.Label(text_frame, text=f"Количество на складе: {prod['quantity']}", bg=bg_color, font=FONT_SMALL, anchor="w").pack(anchor="w", fill=tk.X)
+        tk.Label(text_frame, text=f"Единица измерения: {prod['unit'] or ''}", bg=bg_color, font=FONT_SMALL, anchor=tk.W).pack(anchor=tk.W, fill=tk.X)
+        tk.Label(text_frame, text=f"Количество на складе: {prod['quantity']}", bg=bg_color, font=FONT_SMALL, anchor=tk.W).pack(anchor=tk.W, fill=tk.X)
 
         if discount > 0:
             disc_frame = tk.Frame(card, bg=COLOR_MAIN_BG, width=110, height=110, relief=tk.RIDGE, bd=2)
@@ -647,12 +673,12 @@ class OrdersWindow(tk.Frame):
         left_box = tk.Frame(card, bg=COLOR_MAIN_BG)
         left_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
 
-        tk.Label(left_box, text=f"Артикул заказа: {row[0]}", font=FONT_BOLD, bg=COLOR_MAIN_BG, anchor="w").pack(fill=tk.X)
-        tk.Label(left_box, text=f"Статус заказа: {row[6]}", font=("Times New Roman", 11), bg=COLOR_MAIN_BG, anchor="w").pack(fill=tk.X)
+        tk.Label(left_box, text=f"Артикул заказа: {row[0]}", font=FONT_BOLD, bg=COLOR_MAIN_BG, anchor=tk.W).pack(fill=tk.X)
+        tk.Label(left_box, text=f"Статус заказа: {row[6]}", font=("Times New Roman", 11), bg=COLOR_MAIN_BG, anchor=tk.W).pack(fill=tk.X)
         
         addr = row[3] if row[3] else "Адрес не указан"
-        tk.Label(left_box, text=f"Адрес пункта выдачи: {addr}", font=("Times New Roman", 11), bg=COLOR_MAIN_BG, anchor="w", wraplength=600).pack(fill=tk.X)
-        tk.Label(left_box, text=f"Дата заказа: {row[1]}", font=("Times New Roman", 11), bg=COLOR_MAIN_BG, anchor="w").pack(fill=tk.X)
+        tk.Label(left_box, text=f"Адрес пункта выдачи: {addr}", font=("Times New Roman", 11), bg=COLOR_MAIN_BG, anchor=tk.W, wraplength=600).pack(fill=tk.X)
+        tk.Label(left_box, text=f"Дата заказа: {row[1]}", font=("Times New Roman", 11), bg=COLOR_MAIN_BG, anchor=tk.W).pack(fill=tk.X)
 
         right_box = tk.Frame(card, bg=COLOR_MAIN_BG, relief=tk.SOLID, bd=1, width=150)
         right_box.pack(side=tk.RIGHT, fill=tk.Y, padx=10, pady=5)
@@ -663,7 +689,7 @@ class OrdersWindow(tk.Frame):
 
         if self.app.current_user and self.app.current_user["role"] == ROLE_ADMIN:
             btn_frame = tk.Frame(left_box, bg=COLOR_MAIN_BG)
-            btn_frame.pack(anchor="w", pady=(10, 0))
+            btn_frame.pack(anchor=tk.W, pady=(10, 0))
             order_id = row[0]
             tk.Button(btn_frame, text="Редактировать", command=lambda i=order_id: OrderEditWindow(self.app, self, i), bg=COLOR_ACCENT).pack(side=tk.LEFT, padx=2)
             tk.Button(btn_frame, text="Удалить", command=lambda i=order_id: self.delete_order(i), bg=COLOR_ACCENT).pack(side=tk.LEFT, padx=2)
@@ -721,50 +747,51 @@ class ProductEditWindow(tk.Toplevel):
         main_frame = tk.Frame(self, padx=10, pady=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        tk.Label(main_frame, text="Артикул:").grid(row=0, column=0, sticky="w", pady=2)
-        self.entry_article = tk.Entry(main_frame, state="readonly" if self.article else "normal")
+        tk.Label(main_frame, text="Артикул:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        self.entry_article = tk.Entry(main_frame, state=STATE_READONLY if self.article else STATE_NORMAL)
         self.entry_article.grid(row=0, column=1, sticky="ew", pady=2)
-        if not self.article: self.entry_article.insert(0, self.generate_article())
+        if not self.article:
+            self.entry_article.insert(0, self.generate_article())
 
-        tk.Label(main_frame, text="Наименование:").grid(row=1, column=0, sticky="w", pady=2)
+        tk.Label(main_frame, text="Наименование:").grid(row=1, column=0, sticky=tk.W, pady=2)
         self.entry_name = tk.Entry(main_frame)
         self.entry_name.grid(row=1, column=1, sticky="ew", pady=2)
 
-        tk.Label(main_frame, text="Категория:").grid(row=2, column=0, sticky="w", pady=2)
-        self.combo_category = ttk.Combobox(main_frame, values=self.categories, state="normal")
+        tk.Label(main_frame, text="Категория:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        self.combo_category = ttk.Combobox(main_frame, values=self.categories, state=STATE_NORMAL)
         self.combo_category.grid(row=2, column=1, sticky="ew", pady=2)
 
-        tk.Label(main_frame, text="Производитель:").grid(row=3, column=0, sticky="w", pady=2)
-        self.combo_manufacturer = ttk.Combobox(main_frame, values=self.manufacturers, state="normal")
+        tk.Label(main_frame, text="Производитель:").grid(row=3, column=0, sticky=tk.W, pady=2)
+        self.combo_manufacturer = ttk.Combobox(main_frame, values=self.manufacturers, state=STATE_NORMAL)
         self.combo_manufacturer.grid(row=3, column=1, sticky="ew", pady=2)
 
-        tk.Label(main_frame, text="Поставщик:").grid(row=4, column=0, sticky="w", pady=2)
-        self.combo_supplier = ttk.Combobox(main_frame, values=self.suppliers, state="normal")
+        tk.Label(main_frame, text="Поставщик:").grid(row=4, column=0, sticky=tk.W, pady=2)
+        self.combo_supplier = ttk.Combobox(main_frame, values=self.suppliers, state=STATE_NORMAL)
         self.combo_supplier.grid(row=4, column=1, sticky="ew", pady=2)
 
-        tk.Label(main_frame, text="Цена:").grid(row=5, column=0, sticky="w", pady=2)
+        tk.Label(main_frame, text="Цена:").grid(row=5, column=0, sticky=tk.W, pady=2)
         self.entry_price = tk.Entry(main_frame)
         self.entry_price.grid(row=5, column=1, sticky="ew", pady=2)
 
-        tk.Label(main_frame, text="Единица измерения:").grid(row=6, column=0, sticky="w", pady=2)
+        tk.Label(main_frame, text="Единица измерения:").grid(row=6, column=0, sticky=tk.W, pady=2)
         self.entry_unit = tk.Entry(main_frame)
         self.entry_unit.grid(row=6, column=1, sticky="ew", pady=2)
 
-        tk.Label(main_frame, text="Количество на складе:").grid(row=7, column=0, sticky="w", pady=2)
+        tk.Label(main_frame, text="Количество на складе:").grid(row=7, column=0, sticky=tk.W, pady=2)
         self.entry_quantity = tk.Entry(main_frame)
         self.entry_quantity.grid(row=7, column=1, sticky="ew", pady=2)
 
-        tk.Label(main_frame, text="Скидка (%):").grid(row=8, column=0, sticky="w", pady=2)
+        tk.Label(main_frame, text="Скидка (%):").grid(row=8, column=0, sticky=tk.W, pady=2)
         self.entry_discount = tk.Entry(main_frame)
         self.entry_discount.grid(row=8, column=1, sticky="ew", pady=2)
 
-        tk.Label(main_frame, text="Описание:").grid(row=9, column=0, sticky="w", pady=2)
+        tk.Label(main_frame, text="Описание:").grid(row=9, column=0, sticky=tk.W, pady=2)
         self.text_description = tk.Text(main_frame, height=5, width=40)
         self.text_description.grid(row=9, column=1, sticky="ew", pady=2)
 
-        tk.Label(main_frame, text="Фото:").grid(row=10, column=0, sticky="w", pady=2)
+        tk.Label(main_frame, text="Фото:").grid(row=10, column=0, sticky=tk.W, pady=2)
         self.photo_path = tk.StringVar()
-        tk.Entry(main_frame, textvariable=self.photo_path, state="readonly").grid(row=10, column=1, sticky="ew", pady=2)
+        tk.Entry(main_frame, textvariable=self.photo_path, state=STATE_READONLY).grid(row=10, column=1, sticky="ew", pady=2)
         tk.Button(main_frame, text="Выбрать файл", command=self.select_photo).grid(row=10, column=2, padx=5)
 
         self.preview_label = tk.Label(main_frame, text="Предпросмотр")
@@ -807,10 +834,10 @@ class ProductEditWindow(tk.Toplevel):
         """, (self.article,))
         prod = cursor.fetchone()
         if prod:
-            self.entry_article.config(state="normal")
+            self.entry_article.config(state=STATE_NORMAL)
             self.entry_article.delete(0, tk.END)
             self.entry_article.insert(0, prod["article"])
-            self.entry_article.config(state="readonly")
+            self.entry_article.config(state=STATE_READONLY)
             self.entry_name.insert(0, prod["name"] or "")
             self.combo_category.set(prod["category_name"] or "")
             self.combo_manufacturer.set(prod["manufacturer_name"] or "")
@@ -819,7 +846,7 @@ class ProductEditWindow(tk.Toplevel):
             self.entry_unit.insert(0, prod["unit"] or "")
             self.entry_quantity.insert(0, prod["quantity"] or "")
             self.entry_discount.insert(0, prod["discount"] or "")
-            self.text_description.insert("1.0", prod["description"] or "")
+            self.text_description.insert(TEXT_START, prod["description"] or "")
             self.photo_path.set(prod["photo"] or "")
             self.update_preview()
 
@@ -850,7 +877,7 @@ class ProductEditWindow(tk.Toplevel):
         unit = self.entry_unit.get().strip()
         qty_str = self.entry_quantity.get().strip()
         disc_str = self.entry_discount.get().strip()
-        description = self.text_description.get("1.0", tk.END).strip()
+        description = self.text_description.get(TEXT_START, tk.END).strip()
         photo_src = self.photo_path.get().strip()
 
         if not article or not name or not price_str:
@@ -882,7 +909,6 @@ class ProductEditWindow(tk.Toplevel):
             img.thumbnail(MAX_IMAGE_SIZE, Image.Resampling.LANCZOS)
             img.save(dest_path)
             final_photo_path = dest_path
-
 
         def get_or_create_id(table, name):
             if not name:
@@ -962,8 +988,8 @@ class OrderEditWindow(tk.Toplevel):
         main_frame = tk.Frame(self, padx=10, pady=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        tk.Label(main_frame, text="Номер заказа:").grid(row=0, column=0, sticky="w", pady=2)
-        self.entry_id = tk.Entry(main_frame, state="readonly" if self.order_id else "normal")
+        tk.Label(main_frame, text="Номер заказа:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        self.entry_id = tk.Entry(main_frame, state=STATE_READONLY if self.order_id else STATE_NORMAL)
         self.entry_id.grid(row=0, column=1, sticky="ew", pady=2)
         if not self.order_id:
             cursor = self.app.db.conn.cursor()
@@ -971,32 +997,32 @@ class OrderEditWindow(tk.Toplevel):
             max_id = cursor.fetchone()[0] or 0
             self.entry_id.insert(0, str(max_id + 1))
 
-        tk.Label(main_frame, text="Дата заказа:").grid(row=1, column=0, sticky="w", pady=2)
+        tk.Label(main_frame, text="Дата заказа:").grid(row=1, column=0, sticky=tk.W, pady=2)
         self.entry_order_date = tk.Entry(main_frame)
         self.entry_order_date.grid(row=1, column=1, sticky="ew", pady=2)
         self.entry_order_date.insert(0, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-        tk.Label(main_frame, text="Дата доставки:").grid(row=2, column=0, sticky="w", pady=2)
+        tk.Label(main_frame, text="Дата доставки:").grid(row=2, column=0, sticky=tk.W, pady=2)
         self.entry_delivery_date = tk.Entry(main_frame)
         self.entry_delivery_date.grid(row=2, column=1, sticky="ew", pady=2)
 
-        tk.Label(main_frame, text="Адрес пункта выдачи:").grid(row=3, column=0, sticky="w", pady=2)
+        tk.Label(main_frame, text="Адрес пункта выдачи:").grid(row=3, column=0, sticky=tk.W, pady=2)
         self.combo_address = ttk.Combobox(main_frame, values=[f"{a['id']}: {a['address']}" for a in self.addresses])
         self.combo_address.grid(row=3, column=1, sticky="ew", pady=2)
 
-        tk.Label(main_frame, text="Клиент:").grid(row=4, column=0, sticky="w", pady=2)
+        tk.Label(main_frame, text="Клиент:").grid(row=4, column=0, sticky=tk.W, pady=2)
         self.combo_user = ttk.Combobox(main_frame, values=[f"{u['id']}: {u['full_name']}" for u in self.users])
         self.combo_user.grid(row=4, column=1, sticky="ew", pady=2)
 
-        tk.Label(main_frame, text="Код для получения:").grid(row=5, column=0, sticky="w", pady=2)
+        tk.Label(main_frame, text="Код для получения:").grid(row=5, column=0, sticky=tk.W, pady=2)
         self.entry_code = tk.Entry(main_frame)
         self.entry_code.grid(row=5, column=1, sticky="ew", pady=2)
 
-        tk.Label(main_frame, text="Статус:").grid(row=6, column=0, sticky="w", pady=2)
+        tk.Label(main_frame, text="Статус:").grid(row=6, column=0, sticky=tk.W, pady=2)
         self.combo_status = ttk.Combobox(main_frame, values=self.statuses)
         self.combo_status.grid(row=6, column=1, sticky="ew", pady=2)
 
-        tk.Label(main_frame, text="Состав заказа (артикул, количество; через запятую):").grid(row=7, column=0, sticky="w", pady=2)
+        tk.Label(main_frame, text="Состав заказа (артикул, количество; через запятую):").grid(row=7, column=0, sticky=tk.W, pady=2)
         self.text_items = tk.Text(main_frame, height=5, width=40)
         self.text_items.grid(row=7, column=1, sticky="ew", pady=2)
 
@@ -1018,16 +1044,20 @@ class OrderEditWindow(tk.Toplevel):
         """, (self.order_id,))
         order = cursor.fetchone()
         if order:
-            self.entry_id.config(state="normal")
+            self.entry_id.config(state=STATE_NORMAL)
             self.entry_id.delete(0, tk.END)
             self.entry_id.insert(0, order["id"])
-            self.entry_id.config(state="readonly")
+            self.entry_id.config(state=STATE_READONLY)
             self.entry_order_date.delete(0, tk.END)
             self.entry_order_date.insert(0, order["order_date"] or "")
             self.entry_delivery_date.delete(0, tk.END)
             self.entry_delivery_date.insert(0, order["delivery_date"] or "")
-            if order["address_id"]: self.combo_address.set(f"{order['address_id']}: {order['address']}")
-            if order["user_id"]: self.combo_user.set(f"{order['user_id']}: {order['full_name']}")
+            
+            if order["address_id"]:
+                self.combo_address.set(f"{order['address_id']}: {order['address']}")
+            if order["user_id"]:
+                self.combo_user.set(f"{order['user_id']}: {order['full_name']}")
+                
             self.entry_code.delete(0, tk.END)
             self.entry_code.insert(0, order["pickup_code"] or "")
             self.combo_status.set(order["status"] or "")
@@ -1035,7 +1065,7 @@ class OrderEditWindow(tk.Toplevel):
             cursor.execute("SELECT product_article, quantity FROM order_items WHERE order_id=?", (self.order_id,))
             items = cursor.fetchall()
             items_str = ", ".join([f"{it['product_article']}, {it['quantity']}" for it in items])
-            self.text_items.insert("1.0", items_str)
+            self.text_items.insert(TEXT_START, items_str)
 
     def _parse_order_items(self, items_str):
         items = []
@@ -1069,7 +1099,7 @@ class OrderEditWindow(tk.Toplevel):
         user_text = self.combo_user.get().strip()
         code = self.entry_code.get().strip()
         status = self.combo_status.get().strip()
-        items_str = self.text_items.get("1.0", tk.END).strip()
+        items_str = self.text_items.get(TEXT_START, tk.END).strip()
 
         address_id = int(address_text.split(":")[0]) if address_text and ":" in address_text else None
         user_id = int(user_text.split(":")[0]) if user_text and ":" in user_text else None
