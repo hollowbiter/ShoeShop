@@ -23,13 +23,18 @@ COLOR_ACCENT = "#00FA9A"
 COLOR_DISCOUNT_HIGH = "#2E8B57"
 COLOR_OUT_OF_STOCK = "lightblue"
 
-# Константы для устранения дублирования литералов (S1192)
-FONT_DEFAULT = ("Times New Roman", 12)
-FONT_TITLE = ("Times New Roman", 16)
-FONT_ENTRY = ("Times New Roman", 14)
-FONT_SMALL = ("Times New Roman", 10)
-FONT_SMALL_BOLD = ("Times New Roman", 10, "bold")
-FONT_BOLD = ("Times New Roman", 12, "bold")
+FONT_FAMILY = "Times New Roman"
+FONT_DEFAULT = (FONT_FAMILY, 12)
+FONT_TITLE = (FONT_FAMILY, 16)
+FONT_ENTRY = (FONT_FAMILY, 14)
+FONT_SMALL = (FONT_FAMILY, 10)
+FONT_SMALL_BOLD = (FONT_FAMILY, 10, "bold")
+FONT_BOLD = (FONT_FAMILY, 12, "bold")
+FONT_11 = (FONT_FAMILY, 11)
+FONT_11_BOLD = (FONT_FAMILY, 11, "bold")
+FONT_DISCOUNT = (FONT_FAMILY, 28, "bold")
+FONT_OLD_PRICE = (FONT_FAMILY, 10, "overstrike")
+
 TITLE_ERROR = "Ошибка"
 ROLE_ADMIN = "Администратор"
 ROLE_MANAGER = "Менеджер"
@@ -40,7 +45,6 @@ STATE_READONLY = "readonly"
 TEXT_START = "1.0"
 
 
-# Поле ввода с контекстным меню
 class EntryWithContextMenu(tk.Entry):
     def __init__(self, master=None, **kwargs):
         super().__init__(master, **kwargs)
@@ -217,7 +221,6 @@ class Database:
         self.conn.commit()
         wb.close()
 
-    # Хелпер для снижения сложности import_orders
     def _parse_date(self, date_str):
         if not date_str:
             return None
@@ -230,7 +233,6 @@ class Database:
                 continue
         return None
 
-    # Хелпер для снижения сложности import_orders
     def _process_order_items(self, cursor, order_num, items_str):
         if not items_str:
             return
@@ -421,22 +423,19 @@ class ProductsWindow(tk.Frame):
         filter_frame = tk.Frame(self, bg=COLOR_MAIN_BG)
         filter_frame.pack(fill=tk.X, pady=5, padx=10)
 
-        # Поиск
-        tk.Label(filter_frame, text="Поиск:", bg=COLOR_MAIN_BG, font=FONT_SMALL).pack(side=tk.LEFT, padx=(5,2))
+        tk.Label(filter_frame, text="Поиск:", bg=COLOR_MAIN_BG, font=FONT_11).pack(side=tk.LEFT, padx=(5,2))
         self.search_var = tk.StringVar()
         self.search_var.trace('w', lambda *args: self.load_products())
-        search_entry = tk.Entry(filter_frame, textvariable=self.search_var, font=FONT_SMALL, width=25, bd=2, relief=tk.SUNKEN)
+        search_entry = tk.Entry(filter_frame, textvariable=self.search_var, font=FONT_11, width=25, bd=2, relief=tk.SUNKEN)
         search_entry.pack(side=tk.LEFT, padx=(0,15))
 
-        # Сортировка
-        tk.Label(filter_frame, text="Сорт.:", bg=COLOR_MAIN_BG, font=FONT_SMALL).pack(side=tk.LEFT, padx=(5,2))
+        tk.Label(filter_frame, text="Сорт.:", bg=COLOR_MAIN_BG, font=FONT_11).pack(side=tk.LEFT, padx=(5,2))
         self.sort_var = tk.StringVar(value="Нет")
         self.sort_var.trace('w', lambda *args: self.load_products())
         sort_combo = ttk.Combobox(filter_frame, textvariable=self.sort_var, values=["Нет", "По возрастанию", "По убыванию"], state=STATE_READONLY, width=15)
         sort_combo.pack(side=tk.LEFT, padx=(0,15))
 
-        # Поставщик
-        tk.Label(filter_frame, text="Поставщик:", bg=COLOR_MAIN_BG, font=FONT_SMALL).pack(side=tk.LEFT, padx=(5,2))
+        tk.Label(filter_frame, text="Поставщик:", bg=COLOR_MAIN_BG, font=FONT_11).pack(side=tk.LEFT, padx=(5,2))
         self.supplier_var = tk.StringVar(value=VALUE_ALL_SUPPLIERS)
         self.supplier_var.trace('w', lambda *args: self.load_products())
         cursor = self.app.db.conn.cursor()
@@ -445,8 +444,7 @@ class ProductsWindow(tk.Frame):
         supplier_combo = ttk.Combobox(filter_frame, textvariable=self.supplier_var, values=suppliers, state=STATE_READONLY, width=18)
         supplier_combo.pack(side=tk.LEFT, padx=(0,15))
 
-        # Категория
-        tk.Label(filter_frame, text="Категория:", bg=COLOR_MAIN_BG, font=FONT_SMALL).pack(side=tk.LEFT, padx=(5,2))
+        tk.Label(filter_frame, text="Категория:", bg=COLOR_MAIN_BG, font=FONT_11).pack(side=tk.LEFT, padx=(5,2))
         self.category_var = tk.StringVar(value=VALUE_ALL_CATEGORIES)
         self.category_var.trace('w', lambda *args: self.load_products())
         cursor.execute("SELECT name FROM categories ORDER BY name")
@@ -454,7 +452,6 @@ class ProductsWindow(tk.Frame):
         category_combo = ttk.Combobox(filter_frame, textvariable=self.category_var, values=categories, state=STATE_READONLY, width=15)
         category_combo.pack(side=tk.LEFT, padx=(0,5))
 
-    # Хелпер для снижения сложности load_products
     def _build_product_query(self):
         query = '''
             SELECT p.*, cat.name as category_name, man.name as manufacturer_name, sup.name as supplier_name
@@ -516,32 +513,55 @@ class ProductsWindow(tk.Frame):
             self.canvas.configure(scrollregion=bbox)
             self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-    def create_product_card(self, prod):
-        card = tk.Frame(self.scrollable_frame, bg=COLOR_MAIN_BG, relief=tk.RAISED, bd=1)
-        card.pack(fill=tk.X, padx=10, pady=5, ipadx=5, ipady=5)
+    def _get_card_bg(self, quantity, discount):
+        if quantity == 0:
+            return COLOR_OUT_OF_STOCK
+        if discount > 15:
+            return COLOR_DISCOUNT_HIGH
+        return COLOR_MAIN_BG
 
-        bg_color = COLOR_MAIN_BG
-        if prod["quantity"] == 0:
-            bg_color = COLOR_OUT_OF_STOCK
-        elif prod["discount"] > 15:
-            bg_color = COLOR_DISCOUNT_HIGH
-        card.config(bg=bg_color)
-        
-        img_frame = tk.Frame(card, bg=COLOR_MAIN_BG, width=120, height=120)
+    def _setup_image(self, parent, img_path):
+        img_frame = tk.Frame(parent, bg=COLOR_MAIN_BG, width=120, height=120)
         img_frame.pack(side=tk.LEFT, padx=5, pady=5)
         img_frame.pack_propagate(False)
-
-        img_path = prod['photo']
+        
         if img_path and os.path.exists(img_path):
             pil_img = Image.open(img_path)
         else:
             pil_img = Image.open(DEFAULT_IMAGE)
-        
+            
         pil_img.thumbnail((120, 120), Image.Resampling.LANCZOS)
         photo = ImageTk.PhotoImage(pil_img)
         img_label = tk.Label(img_frame, image=photo, bg=COLOR_MAIN_BG)
         img_label.image = photo
         img_label.pack(expand=True, fill=tk.BOTH)
+
+    def _setup_price_labels(self, parent, bg_color, price, discount):
+        price_frame = tk.Frame(parent, bg=bg_color)
+        price_frame.pack(anchor=tk.W, fill=tk.X, pady=2)
+        
+        if discount > 0:
+            final_price = price * (1 - discount / 100)
+            tk.Label(price_frame, text=f"{price:.2f} руб.", fg="red", bg=bg_color, font=FONT_OLD_PRICE).pack(side=tk.LEFT, padx=(0, 5))
+            tk.Label(price_frame, text=f"{final_price:.2f} руб.", fg="black", bg=bg_color, font=FONT_SMALL_BOLD).pack(side=tk.LEFT)
+        else:
+            tk.Label(price_frame, text=f"{price:.2f} руб.", font=FONT_SMALL, bg=bg_color).pack(side=tk.LEFT)
+
+    def _create_discount_badge(self, parent, discount):
+        disc_frame = tk.Frame(parent, bg=COLOR_MAIN_BG, width=110, height=110, relief=tk.RIDGE, bd=2)
+        disc_frame.pack(side=tk.RIGHT, padx=5, pady=5)
+        disc_frame.pack_propagate(False)
+        inner_frame = tk.Frame(disc_frame, bg=COLOR_MAIN_BG)
+        inner_frame.pack(expand=True)
+        tk.Label(inner_frame, text="Скидка", bg=COLOR_MAIN_BG, font=FONT_SMALL_BOLD).pack(anchor="center")
+        tk.Label(inner_frame, text=f"{int(discount)}%", bg=COLOR_MAIN_BG, font=FONT_DISCOUNT, fg="red").pack(anchor="center")
+
+    def create_product_card(self, prod):
+        bg_color = self._get_card_bg(prod["quantity"], prod["discount"])
+        card = tk.Frame(self.scrollable_frame, bg=bg_color, relief=tk.RAISED, bd=1)
+        card.pack(fill=tk.X, padx=10, pady=5, ipadx=5, ipady=5)
+        
+        self._setup_image(card, prod['photo'])
 
         text_frame = tk.Frame(card, bg=bg_color)
         text_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -555,30 +575,13 @@ class ProductsWindow(tk.Frame):
         tk.Label(text_frame, text=f"Производитель: {prod['manufacturer_name'] or ''}", bg=bg_color, font=FONT_SMALL, anchor=tk.W).pack(anchor=tk.W, fill=tk.X)
         tk.Label(text_frame, text=f"Поставщик: {prod['supplier_name'] or ''}", bg=bg_color, font=FONT_SMALL, anchor=tk.W).pack(anchor=tk.W, fill=tk.X)
 
-        original_price = prod["price"]
-        discount = prod["discount"] or 0
-        final_price = original_price * (1 - discount / 100)
-
-        price_frame = tk.Frame(text_frame, bg=bg_color)
-        price_frame.pack(anchor=tk.W, fill=tk.X, pady=2)
-
-        if discount > 0:
-            tk.Label(price_frame, text=f"{original_price:.2f} руб.", fg="red", bg=bg_color, font=("Times New Roman", 10, "overstrike")).pack(side=tk.LEFT, padx=(0, 5))
-            tk.Label(price_frame, text=f"{final_price:.2f} руб.", fg="black", bg=bg_color, font=FONT_SMALL_BOLD).pack(side=tk.LEFT)
-        else:
-            tk.Label(price_frame, text=f"{original_price:.2f} руб.", font=FONT_SMALL, bg=bg_color).pack(side=tk.LEFT)
+        self._setup_price_labels(text_frame, bg_color, prod["price"], prod["discount"] or 0)
 
         tk.Label(text_frame, text=f"Единица измерения: {prod['unit'] or ''}", bg=bg_color, font=FONT_SMALL, anchor=tk.W).pack(anchor=tk.W, fill=tk.X)
         tk.Label(text_frame, text=f"Количество на складе: {prod['quantity']}", bg=bg_color, font=FONT_SMALL, anchor=tk.W).pack(anchor=tk.W, fill=tk.X)
 
-        if discount > 0:
-            disc_frame = tk.Frame(card, bg=COLOR_MAIN_BG, width=110, height=110, relief=tk.RIDGE, bd=2)
-            disc_frame.pack(side=tk.RIGHT, padx=5, pady=5)
-            disc_frame.pack_propagate(False)
-            inner_frame = tk.Frame(disc_frame, bg=COLOR_MAIN_BG)
-            inner_frame.pack(expand=True)
-            tk.Label(inner_frame, text="Скидка", bg=COLOR_MAIN_BG, font=FONT_SMALL_BOLD).pack(anchor="center")
-            tk.Label(inner_frame, text=f"{int(discount)}%", bg=COLOR_MAIN_BG, font=("Times New Roman", 28, "bold"), fg="red").pack(anchor="center")
+        if (prod["discount"] or 0) > 0:
+            self._create_discount_badge(card, prod["discount"])
 
         if self.app.current_user and self.app.current_user["role"] == ROLE_ADMIN:
             btn_frame = tk.Frame(text_frame, bg=bg_color)
@@ -674,18 +677,18 @@ class OrdersWindow(tk.Frame):
         left_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
 
         tk.Label(left_box, text=f"Артикул заказа: {row[0]}", font=FONT_BOLD, bg=COLOR_MAIN_BG, anchor=tk.W).pack(fill=tk.X)
-        tk.Label(left_box, text=f"Статус заказа: {row[6]}", font=("Times New Roman", 11), bg=COLOR_MAIN_BG, anchor=tk.W).pack(fill=tk.X)
+        tk.Label(left_box, text=f"Статус заказа: {row[6]}", font=FONT_11, bg=COLOR_MAIN_BG, anchor=tk.W).pack(fill=tk.X)
         
         addr = row[3] if row[3] else "Адрес не указан"
-        tk.Label(left_box, text=f"Адрес пункта выдачи: {addr}", font=("Times New Roman", 11), bg=COLOR_MAIN_BG, anchor=tk.W, wraplength=600).pack(fill=tk.X)
-        tk.Label(left_box, text=f"Дата заказа: {row[1]}", font=("Times New Roman", 11), bg=COLOR_MAIN_BG, anchor=tk.W).pack(fill=tk.X)
+        tk.Label(left_box, text=f"Адрес пункта выдачи: {addr}", font=FONT_11, bg=COLOR_MAIN_BG, anchor=tk.W, wraplength=600).pack(fill=tk.X)
+        tk.Label(left_box, text=f"Дата заказа: {row[1]}", font=FONT_11, bg=COLOR_MAIN_BG, anchor=tk.W).pack(fill=tk.X)
 
         right_box = tk.Frame(card, bg=COLOR_MAIN_BG, relief=tk.SOLID, bd=1, width=150)
         right_box.pack(side=tk.RIGHT, fill=tk.Y, padx=10, pady=5)
         right_box.pack_propagate(False)
 
         tk.Label(right_box, text="Дата доставки", font=FONT_SMALL, bg=COLOR_MAIN_BG).pack(pady=(5, 0))
-        tk.Label(right_box, text=f"{row[2]}", font=("Times New Roman", 11, "bold"), bg=COLOR_MAIN_BG).pack(expand=True)
+        tk.Label(right_box, text=f"{row[2]}", font=FONT_11_BOLD, bg=COLOR_MAIN_BG).pack(expand=True)
 
         if self.app.current_user and self.app.current_user["role"] == ROLE_ADMIN:
             btn_frame = tk.Frame(left_box, bg=COLOR_MAIN_BG)
@@ -867,6 +870,50 @@ class ProductEditWindow(tk.Toplevel):
         else:
             self.preview_label.config(image="", text="Нет изображения")
 
+    def _parse_and_validate_numbers(self, price_str, qty_str, disc_str):
+        price = float(price_str)
+        quantity = int(qty_str) if qty_str else 0
+        discount = float(disc_str) if disc_str else 0
+        if price < 0 or quantity < 0 or not (0 <= discount <= 100):
+            raise ValueError
+        return price, quantity, discount
+
+    def _process_saved_image(self, article, photo_src):
+        if not (photo_src and os.path.exists(photo_src)):
+            return None
+            
+        ext = os.path.splitext(photo_src)[1]
+        dest_path = os.path.join(IMAGE_FOLDER, f"{article}{ext}")
+        
+        if self.article:
+            cursor = self.app.db.conn.cursor()
+            cursor.execute("SELECT photo FROM products WHERE article=?", (self.article,))
+            old_photo = cursor.fetchone()
+            if old_photo and old_photo["photo"] and os.path.exists(old_photo["photo"]):
+                os.remove(old_photo["photo"])
+                
+        img = Image.open(photo_src)
+        img.thumbnail(MAX_IMAGE_SIZE, Image.Resampling.LANCZOS)
+        img.save(dest_path)
+        return dest_path
+
+    def _get_foreign_key(self, table, name):
+        if not name:
+            return None
+        cursor = self.app.db.conn.cursor()
+        queries = {
+            "categories": ("SELECT id FROM categories WHERE name=?", "INSERT INTO categories (name) VALUES (?)"),
+            "manufacturers": ("SELECT id FROM manufacturers WHERE name=?", "INSERT INTO manufacturers (name) VALUES (?)"),
+            "suppliers": ("SELECT id FROM suppliers WHERE name=?", "INSERT INTO suppliers (name) VALUES (?)")
+        }
+        sel_q, ins_q = queries[table]
+        cursor.execute(sel_q, (name,))
+        row = cursor.fetchone()
+        if row:
+            return row[0]
+        cursor.execute(ins_q, (name,))
+        return cursor.lastrowid
+
     def save_product(self):
         article = self.entry_article.get().strip()
         name = self.entry_name.get().strip()
@@ -885,51 +932,16 @@ class ProductEditWindow(tk.Toplevel):
             return
             
         try:
-            price = float(price_str)
-            quantity = int(qty_str) if qty_str else 0
-            discount = float(disc_str) if disc_str else 0
-            if price < 0 or quantity < 0 or not (0 <= discount <= 100):
-                raise ValueError
+            price, quantity, discount = self._parse_and_validate_numbers(price_str, qty_str, disc_str)
         except ValueError:
             messagebox.showerror(TITLE_ERROR, "Убедитесь, что цена и количество — положительные числа, а скидка от 0 до 100.")
             return
 
-        final_photo_path = None
-        if photo_src and os.path.exists(photo_src):
-            ext = os.path.splitext(photo_src)[1]
-            dest_filename = f"{article}{ext}"
-            dest_path = os.path.join(IMAGE_FOLDER, dest_filename)
-            if self.article:
-                cursor = self.app.db.conn.cursor()
-                cursor.execute("SELECT photo FROM products WHERE article=?", (self.article,))
-                old_photo = cursor.fetchone()
-                if old_photo and old_photo["photo"] and os.path.exists(old_photo["photo"]):
-                    os.remove(old_photo["photo"])
-            img = Image.open(photo_src)
-            img.thumbnail(MAX_IMAGE_SIZE, Image.Resampling.LANCZOS)
-            img.save(dest_path)
-            final_photo_path = dest_path
+        final_photo_path = self._process_saved_image(article, photo_src)
 
-        def get_or_create_id(table, name):
-            if not name:
-                return None
-            cursor = self.app.db.conn.cursor()
-            queries = {
-                "categories": ("SELECT id FROM categories WHERE name=?", "INSERT INTO categories (name) VALUES (?)"),
-                "manufacturers": ("SELECT id FROM manufacturers WHERE name=?", "INSERT INTO manufacturers (name) VALUES (?)"),
-                "suppliers": ("SELECT id FROM suppliers WHERE name=?", "INSERT INTO suppliers (name) VALUES (?)")
-            }
-            sel_q, ins_q = queries[table]
-            cursor.execute(sel_q, (name,))
-            row = cursor.fetchone()
-            if row:
-                return row[0]
-            cursor.execute(ins_q, (name,))
-            return cursor.lastrowid
-
-        cat_id = get_or_create_id("categories", category)
-        man_id = get_or_create_id("manufacturers", manufacturer)
-        sup_id = get_or_create_id("suppliers", supplier)
+        cat_id = self._get_foreign_key("categories", category)
+        man_id = self._get_foreign_key("manufacturers", manufacturer)
+        sup_id = self._get_foreign_key("suppliers", supplier)
 
         cursor = self.app.db.conn.cursor()
         if self.article:
