@@ -23,7 +23,6 @@ COLOR_ACCENT = "#00FA9A"
 COLOR_DISCOUNT_HIGH = "#2E8B57"
 COLOR_OUT_OF_STOCK = "lightblue"
 
-# Константы для устранения дублирования литералов (S1192)
 FONT_DEFAULT = ("Times New Roman", 12)
 FONT_TITLE = ("Times New Roman", 16)
 FONT_ENTRY = ("Times New Roman", 14)
@@ -172,7 +171,6 @@ class Database:
 
         cat_cache, man_cache, sup_cache = {}, {}, {}
 
-        # Избегаем B608 (SQL Injection) используя маппинг запросов
         def get_or_create(table, name, cache):
             if name in cache:
                 return cache[name]
@@ -226,7 +224,7 @@ class Database:
                 try:
                     dt = datetime.datetime.strptime(date_str, fmt)
                     return dt.strftime("%Y-%m-%d %H:%M:%S")
-                except ValueError:  # Исправлено E722, B112
+                except ValueError:
                     continue
             return None
 
@@ -269,7 +267,7 @@ class Database:
                     article = parts[i]
                     try:
                         qty = int(parts[i + 1])
-                    except ValueError:  # Исправлено E722
+                    except ValueError:
                         qty = 1
                     cursor.execute(
                         "INSERT INTO order_items (order_id, product_article, quantity) VALUES (?, ?, ?)",
@@ -859,7 +857,6 @@ class ProductEditWindow(tk.Toplevel):
             messagebox.showerror(TITLE_ERROR, "Заполните обязательные поля (артикул, наименование, цена)")
             return
             
-        # Исправлено количество возвратов (qlty:return-statements) и голые Exception
         try:
             price = float(price_str)
             quantity = int(qty_str) if qty_str else 0
@@ -886,7 +883,7 @@ class ProductEditWindow(tk.Toplevel):
             img.save(dest_path)
             final_photo_path = dest_path
 
-        # Избегаем B608 (SQL Injection) используя маппинг
+
         def get_or_create_id(table, name):
             if not name:
                 return None
@@ -1040,7 +1037,6 @@ class OrderEditWindow(tk.Toplevel):
             items_str = ", ".join([f"{it['product_article']}, {it['quantity']}" for it in items])
             self.text_items.insert("1.0", items_str)
 
-    # Исправление qlty:function-complexity. Вынесли парсинг в отдельный метод.
     def _parse_order_items(self, items_str):
         items = []
         if not items_str:
@@ -1063,7 +1059,7 @@ class OrderEditWindow(tk.Toplevel):
     def save_order(self):
         try:
             order_id = int(self.entry_id.get())
-        except ValueError: # Исправлено E722
+        except ValueError:
             messagebox.showerror(TITLE_ERROR, "Некорректный номер заказа")
             return
             
@@ -1078,7 +1074,6 @@ class OrderEditWindow(tk.Toplevel):
         address_id = int(address_text.split(":")[0]) if address_text and ":" in address_text else None
         user_id = int(user_text.split(":")[0]) if user_text and ":" in user_text else None
 
-        # Использование хелпера для снижения сложности функции (qlty:function-complexity)
         try:
             items = self._parse_order_items(items_str)
         except ValueError as e:
