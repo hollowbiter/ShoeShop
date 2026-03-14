@@ -1,0 +1,33 @@
+DB_NAME = "shoe_shop.db"
+IMAGE_FOLDER = "product_images"
+DEFAULT_IMAGE = "picture.png"
+ICON_FILE = "Icon.ico"
+LOGO_FILE = "Icon.png"
+MAX_IMAGE_SIZE = (300, 200)
+
+COLOR_MAIN_BG = "#FFFFFF"
+COLOR_EXTRA_BG = "#7FFF00"
+COLOR_ACCENT = "#00FA9A"
+COLOR_DISCOUNT_HIGH = "#2E8B57"
+COLOR_OUT_OF_STOCK = "lightblue"
+
+FONT_FAMILY = "Times New Roman"
+FONT_DEFAULT = (FONT_FAMILY, 12)
+FONT_TITLE = (FONT_FAMILY, 16)
+FONT_ENTRY = (FONT_FAMILY, 14)
+FONT_SMALL = (FONT_FAMILY, 10)
+FONT_SMALL_BOLD = (FONT_FAMILY, 10, "bold")
+FONT_BOLD = (FONT_FAMILY, 12, "bold")
+FONT_11 = (FONT_FAMILY, 11)
+FONT_11_BOLD = (FONT_FAMILY, 11, "bold")
+FONT_DISCOUNT = (FONT_FAMILY, 28, "bold")
+FONT_OLD_PRICE = (FONT_FAMILY, 10, "overstrike")
+
+TITLE_ERROR = "Ошибка"
+ROLE_ADMIN = "Администратор"
+ROLE_MANAGER = "Менеджер"
+VALUE_ALL_SUPPLIERS = "Все поставщики"
+VALUE_ALL_CATEGORIES = "Все категории"
+STATE_NORMAL = "normal"
+STATE_READONLY = "readonly"
+TEXT_START = "1.0"
