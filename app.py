@@ -464,24 +464,23 @@ class ProductsWindow(tk.Frame):
         filter_frame = tk.Frame(self, bg=COLOR_MAIN_BG)
         filter_frame.pack(fill=tk.X, pady=5, padx=10)
 
+        # Поиск
         tk.Label(filter_frame, text="Поиск:", bg=COLOR_MAIN_BG, font=("Times New Roman", 11)).pack(side=tk.LEFT, padx=(5,2))
         self.search_var = tk.StringVar()
         self.search_var.trace('w', lambda *args: self.load_products())
         search_entry = tk.Entry(filter_frame, textvariable=self.search_var, font=("Times New Roman", 11), width=25, bd=2, relief=tk.SUNKEN)
         search_entry.pack(side=tk.LEFT, padx=(0,15))
 
-        tk.Label(filter_frame, text="Сортировка по кол-ву:", bg=COLOR_MAIN_BG).pack(side=tk.LEFT, padx=5)
+        # Сортировка
+        tk.Label(filter_frame, text="Сорт.:", bg=COLOR_MAIN_BG, font=("Times New Roman", 11)).pack(side=tk.LEFT, padx=(5,2))
         self.sort_var = tk.StringVar(value="Нет")
-        self.sort_var.trace('w', lambda *args: self.load_products())  # <-- добавить эту строку
-        sort_combo = ttk.Combobox(
-            filter_frame,
-            textvariable=self.sort_var,
-            values=["Нет", "По возрастанию", "По убыванию"],
-            state="readonly",
-            width=20
-        )
-        sort_combo.pack(side=tk.LEFT, padx=5)
+        self.sort_var.trace('w', lambda *args: self.load_products())
+        sort_combo = ttk.Combobox(filter_frame, textvariable=self.sort_var,
+                                values=["Нет", "По возрастанию", "По убыванию"],
+                                state="readonly", width=15)
+        sort_combo.pack(side=tk.LEFT, padx=(0,15))
 
+        # Поставщик
         tk.Label(filter_frame, text="Поставщик:", bg=COLOR_MAIN_BG, font=("Times New Roman", 11)).pack(side=tk.LEFT, padx=(5,2))
         self.supplier_var = tk.StringVar(value="Все поставщики")
         self.supplier_var.trace('w', lambda *args: self.load_products())
@@ -491,6 +490,7 @@ class ProductsWindow(tk.Frame):
         supplier_combo = ttk.Combobox(filter_frame, textvariable=self.supplier_var, values=suppliers, state="readonly", width=18)
         supplier_combo.pack(side=tk.LEFT, padx=(0,15))
 
+        # Категория
         tk.Label(filter_frame, text="Категория:", bg=COLOR_MAIN_BG, font=("Times New Roman", 11)).pack(side=tk.LEFT, padx=(5,2))
         self.category_var = tk.StringVar(value="Все категории")
         self.category_var.trace('w', lambda *args: self.load_products())
@@ -500,7 +500,7 @@ class ProductsWindow(tk.Frame):
         category_combo.pack(side=tk.LEFT, padx=(0,5))
 
     def load_products(self):
-        print(self.sort_var.get())
+        # Очищаем предыдущие карточки
         for widget in self.scrollable_frame.winfo_children():
             widget.destroy()
 
@@ -533,16 +533,19 @@ class ProductsWindow(tk.Frame):
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
 
-        # Сортировка по количеству
         if hasattr(self, 'sort_var'):
-            current_sort = self.sort_var.get()
-            if current_sort == "По возрастанию":
+            if self.sort_var.get() == "По возрастанию":
                 query += " ORDER BY p.quantity ASC"
-            elif current_sort == "По убыванию":
+            elif self.sort_var.get() == "По убыванию":
                 query += " ORDER BY p.quantity DESC"
 
-        cursor.execute(query, params)
-        products = cursor.fetchall()
+        try:
+            cursor.execute(query, params)
+            products = cursor.fetchall()
+            print(f"Найдено товаров: {len(products)}")
+        except Exception as e:
+            print("Ошибка при выполнении запроса:", e)
+            products = []
 
         for prod in products:
             self.create_product_card(prod)
@@ -957,17 +960,18 @@ class ProductEditWindow(tk.Toplevel):
         existing = [row['article'] for row in cursor.fetchall()]
         max_num = 0
         for art in existing:
-            match = re.search(r'A(\d+)T4', art)
+            match = re.search(r'[A-Za-z](\d{3})', art)
             if match:
                 num = int(match.group(1))
                 if num > max_num:
                     max_num = num
-        base = max_num + 1
-        while True:
-            candidate = f"A{base}T4"
-            if candidate not in existing:
-                return candidate
-            base += 1
+        next_num = max_num + 1
+        new_article = f"A{next_num:03d}T4"
+        while new_article in existing:
+            next_num += 1
+            new_article = f"A{next_num:03d}T4"
+        
+        return new_article
 
     def load_product_data(self):
         cursor = self.app.db.conn.cursor()
