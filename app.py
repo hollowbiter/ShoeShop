@@ -1,11 +1,17 @@
 import sqlite3
+
 import tkinter as tk
+
 from tkinter import ttk, messagebox, filedialog
+
 import os
+
 import datetime
+
 import re
 
 import openpyxl
+
 from PIL import Image, ImageTk
 
 # Конфигурация
