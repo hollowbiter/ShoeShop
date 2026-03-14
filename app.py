@@ -23,6 +23,17 @@ COLOR_ACCENT = "#00FA9A"
 COLOR_DISCOUNT_HIGH = "#2E8B57"
 COLOR_OUT_OF_STOCK = "lightblue"
 
+# Константы для устранения дублирования литералов (S1192)
+FONT_DEFAULT = ("Times New Roman", 12)
+FONT_TITLE = ("Times New Roman", 16)
+FONT_ENTRY = ("Times New Roman", 14)
+FONT_SMALL = ("Times New Roman", 10)
+FONT_SMALL_BOLD = ("Times New Roman", 10, "bold")
+FONT_BOLD = ("Times New Roman", 12, "bold")
+TITLE_ERROR = "Ошибка"
+ROLE_ADMIN = "Администратор"
+ROLE_MANAGER = "Менеджер"
+
 
 # Поле ввода с контекстным меню
 class EntryWithContextMenu(tk.Entry):
@@ -43,28 +54,24 @@ class Database:
 
     def create_tables(self):
         cursor = self.conn.cursor()
-        # Категории
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT UNIQUE NOT NULL
             )
         """)
-        # Производители
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS manufacturers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT UNIQUE NOT NULL
             )
         """)
-        # Поставщики
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS suppliers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT UNIQUE NOT NULL
             )
         """)
-        # Товары
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS products (
                 article TEXT PRIMARY KEY,
@@ -83,7 +90,6 @@ class Database:
                 FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
             )
         """)
-        # Пользователи
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -93,14 +99,12 @@ class Database:
                 password TEXT NOT NULL
             )
         """)
-        # Адреса
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS addresses (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 address TEXT UNIQUE NOT NULL
             )
         """)
-        # Заказы
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS orders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -114,7 +118,6 @@ class Database:
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
         """)
-        # Позиции заказа
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS order_items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -167,44 +170,37 @@ class Database:
         sheet = wb.active
         cursor = self.conn.cursor()
 
-        cat_cache = {}
-        man_cache = {}
-        sup_cache = {}
+        cat_cache, man_cache, sup_cache = {}, {}, {}
 
+        # Избегаем B608 (SQL Injection) используя маппинг запросов
         def get_or_create(table, name, cache):
             if name in cache:
                 return cache[name]
-            cursor.execute(f"SELECT id FROM {table} WHERE name = ?", (name,))
+                
+            queries = {
+                "categories": ("SELECT id FROM categories WHERE name = ?", "INSERT INTO categories (name) VALUES (?)"),
+                "manufacturers": ("SELECT id FROM manufacturers WHERE name = ?", "INSERT INTO manufacturers (name) VALUES (?)"),
+                "suppliers": ("SELECT id FROM suppliers WHERE name = ?", "INSERT INTO suppliers (name) VALUES (?)")
+            }
+            sel_q, ins_q = queries[table]
+            
+            cursor.execute(sel_q, (name,))
             row = cursor.fetchone()
             if row:
                 cache[name] = row[0]
             else:
-                cursor.execute(f"INSERT INTO {table} (name) VALUES (?)", (name,))
+                cursor.execute(ins_q, (name,))
                 cache[name] = cursor.lastrowid
             return cache[name]
 
         for row in sheet.iter_rows(min_row=2, values_only=True):
-            (
-                article,
-                name,
-                unit,
-                price,
-                supplier,
-                manufacturer,
-                category,
-                discount,
-                quantity,
-                description,
-                photo,
-            ) = row
+            (article, name, unit, price, supplier, manufacturer, 
+             category, discount, quantity, description, photo) = row
             if not article:
                 continue
+                
             cat_id = get_or_create("categories", category.strip(), cat_cache) if category else None
-            man_id = (
-                get_or_create("manufacturers", manufacturer.strip(), man_cache)
-                if manufacturer
-                else None
-            )
+            man_id = get_or_create("manufacturers", manufacturer.strip(), man_cache) if manufacturer else None
             sup_id = get_or_create("suppliers", supplier.strip(), sup_cache) if supplier else None
 
             cursor.execute(
@@ -212,19 +208,7 @@ class Database:
                 INSERT INTO products (article, name, unit, price, category_id, manufacturer_id, supplier_id, discount, quantity, description, photo)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-                (
-                    article.strip(),
-                    name.strip(),
-                    unit,
-                    price,
-                    cat_id,
-                    man_id,
-                    sup_id,
-                    discount,
-                    quantity,
-                    description,
-                    photo,
-                ),
+                (article.strip(), name.strip(), unit, price, cat_id, man_id, sup_id, discount, quantity, description, photo),
             )
         self.conn.commit()
         wb.close()
@@ -242,33 +226,21 @@ class Database:
                 try:
                     dt = datetime.datetime.strptime(date_str, fmt)
                     return dt.strftime("%Y-%m-%d %H:%M:%S")
-                except Exception:
+                except ValueError:  # Исправлено E722, B112
                     continue
             return None
 
         cursor.execute("SELECT id, full_name FROM users")
-        users = cursor.fetchall()
-        user_by_name = {}
-        for u in users:
-            if u["full_name"] not in user_by_name:
-                user_by_name[u["full_name"]] = u["id"]
+        user_by_name = {u["full_name"]: u["id"] for u in cursor.fetchall()}
 
         cursor.execute("SELECT id, address FROM addresses ORDER BY id")
-        addresses = cursor.fetchall()
-        address_by_index = {idx + 1: addr["id"] for idx, addr in enumerate(addresses)}
+        address_by_index = {idx + 1: addr["id"] for idx, addr in enumerate(cursor.fetchall())}
 
         for row in sheet.iter_rows(min_row=2, values_only=True):
             row = row[:8]
-            (
-                order_num,
-                items_str,
-                order_date,
-                delivery_date,
-                address_num,
-                client_fio,
-                pickup_code,
-                status,
-            ) = row
+            (order_num, items_str, order_date, delivery_date, 
+             address_num, client_fio, pickup_code, status) = row
+            
             if not order_num:
                 continue
 
@@ -288,15 +260,7 @@ class Database:
                 INSERT INTO orders (id, order_date, delivery_date, address_id, user_id, pickup_code, status)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-                (
-                    order_num,
-                    order_date_parsed,
-                    delivery_date_parsed,
-                    address_id,
-                    user_id,
-                    str(pickup_code).strip(),
-                    status.strip(),
-                ),
+                (order_num, order_date_parsed, delivery_date_parsed, address_id, user_id, str(pickup_code).strip(), status.strip() if status else ""),
             )
 
             if items_str:
@@ -305,13 +269,10 @@ class Database:
                     article = parts[i]
                     try:
                         qty = int(parts[i + 1])
-                    except Exception:
+                    except ValueError:  # Исправлено E722
                         qty = 1
                     cursor.execute(
-                        """
-                        INSERT INTO order_items (order_id, product_article, quantity)
-                        VALUES (?, ?, ?)
-                    """,
+                        "INSERT INTO order_items (order_id, product_article, quantity) VALUES (?, ?, ?)",
                         (order_num, article, qty),
                     )
         self.conn.commit()
@@ -366,28 +327,26 @@ class LoginWindow(tk.Frame):
             self.logo = ImageTk.PhotoImage(logo_img)
             tk.Label(self, image=self.logo, bg=COLOR_MAIN_BG).pack(pady=10)
 
-        tk.Label(self, text="Вход в систему", font=("Times New Roman", 16), bg=COLOR_MAIN_BG).pack(
-            pady=5
-        )
+        tk.Label(self, text="Вход в систему", font=FONT_TITLE, bg=COLOR_MAIN_BG).pack(pady=5)
 
         frame = tk.Frame(self, bg=COLOR_MAIN_BG)
         frame.pack(pady=10)
 
-        tk.Label(frame, text="Логин:", bg=COLOR_MAIN_BG, font=("Times New Roman", 12)).grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        self.entry_login = EntryWithContextMenu(frame, font=("Times New Roman", 14), width=25, bd=3, relief=tk.RIDGE)
+        tk.Label(frame, text="Логин:", bg=COLOR_MAIN_BG, font=FONT_DEFAULT).grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        self.entry_login = EntryWithContextMenu(frame, font=FONT_ENTRY, width=25, bd=3, relief=tk.RIDGE)
         self.entry_login.grid(row=0, column=1, padx=5, pady=5)
 
-        tk.Label(frame, text="Пароль:", bg=COLOR_MAIN_BG, font=("Times New Roman", 12)).grid(row=1, column=0, sticky="w", padx=5, pady=5)
-        self.entry_password = EntryWithContextMenu(frame, show="*", font=("Times New Roman", 14), width=25, bd=3, relief=tk.RIDGE)
+        tk.Label(frame, text="Пароль:", bg=COLOR_MAIN_BG, font=FONT_DEFAULT).grid(row=1, column=0, sticky="w", padx=5, pady=5)
+        self.entry_password = EntryWithContextMenu(frame, show="*", font=FONT_ENTRY, width=25, bd=3, relief=tk.RIDGE)
         self.entry_password.grid(row=1, column=1, padx=5, pady=5)
 
         btn_frame = tk.Frame(self, bg=COLOR_MAIN_BG)
         btn_frame.pack(pady=10)
 
         tk.Button(btn_frame, text="Войти", command=self.login, bg=COLOR_ACCENT, 
-          font=("Times New Roman", 14), padx=15, pady=5).pack(side=tk.LEFT, padx=5)
+          font=FONT_ENTRY, padx=15, pady=5).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="Войти как гость", command=self.guest_login, bg=COLOR_EXTRA_BG,
-          font=("Times New Roman", 14), padx=15, pady=5).pack(side=tk.LEFT, padx=5)
+          font=FONT_ENTRY, padx=15, pady=5).pack(side=tk.LEFT, padx=5)
 
     def login(self):
         login = self.entry_login.get().strip()
@@ -399,7 +358,7 @@ class LoginWindow(tk.Frame):
             self.app.current_user = dict(user)
             self.app.show_products()
         else:
-            messagebox.showerror("Ошибка", "Неверный логин или пароль")
+            messagebox.showerror(TITLE_ERROR, "Неверный логин или пароль")
 
     def guest_login(self):
         self.app.current_user = None
@@ -423,40 +382,27 @@ class ProductsWindow(tk.Frame):
             text = f"{fio} ({role})"
         else:
             text = "Гость"
-        tk.Label(top_frame, text=text, bg=COLOR_EXTRA_BG, font=("Times New Roman", 12)).pack(
-            side=tk.RIGHT, padx=10, pady=5
-        )
+        tk.Label(top_frame, text=text, bg=COLOR_EXTRA_BG, font=FONT_DEFAULT).pack(side=tk.RIGHT, padx=10, pady=5)
+        tk.Button(top_frame, text="Выход", command=self.logout, bg=COLOR_ACCENT).pack(side=tk.LEFT, padx=10, pady=5)
 
-        tk.Button(top_frame, text="Выход", command=self.logout, bg=COLOR_ACCENT).pack(
-            side=tk.LEFT, padx=10, pady=5
-        )
-
-        if self.app.current_user and self.app.current_user["role"] in ("Менеджер", "Администратор"):
-            tk.Button(top_frame, text="Заказы", command=self.app.show_orders, bg=COLOR_ACCENT).pack(
-                side=tk.LEFT, padx=10, pady=5
-            )
-
-        if self.app.current_user and self.app.current_user["role"] in ("Менеджер", "Администратор"):
+        has_access = self.app.current_user and self.app.current_user["role"] in (ROLE_MANAGER, ROLE_ADMIN)
+        if has_access:
+            tk.Button(top_frame, text="Заказы", command=self.app.show_orders, bg=COLOR_ACCENT).pack(side=tk.LEFT, padx=10, pady=5)
             self.create_filter_panel()
 
-        if self.app.current_user and self.app.current_user["role"] == "Администратор":
-            tk.Button(
-                top_frame, text="Добавить товар", command=self.add_product, bg=COLOR_ACCENT
-            ).pack(side=tk.LEFT, padx=10, pady=5)
+        if self.app.current_user and self.app.current_user["role"] == ROLE_ADMIN:
+            tk.Button(top_frame, text="Добавить товар", command=self.add_product, bg=COLOR_ACCENT).pack(side=tk.LEFT, padx=10, pady=5)
 
         self.canvas = tk.Canvas(self, bg=COLOR_MAIN_BG, highlightthickness=0)
         self.scrollbar = ttk.Scrollbar(self, orient=tk.VERTICAL, command=self.canvas.yview)
         self.scrollable_frame = tk.Frame(self.canvas, bg=COLOR_MAIN_BG)
 
-        self.scrollable_frame.bind(
-            "<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        )
+        self.scrollable_frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
         
         self.load_products()
 
@@ -475,9 +421,7 @@ class ProductsWindow(tk.Frame):
         tk.Label(filter_frame, text="Сорт.:", bg=COLOR_MAIN_BG, font=("Times New Roman", 11)).pack(side=tk.LEFT, padx=(5,2))
         self.sort_var = tk.StringVar(value="Нет")
         self.sort_var.trace('w', lambda *args: self.load_products())
-        sort_combo = ttk.Combobox(filter_frame, textvariable=self.sort_var,
-                                values=["Нет", "По возрастанию", "По убыванию"],
-                                state="readonly", width=15)
+        sort_combo = ttk.Combobox(filter_frame, textvariable=self.sort_var, values=["Нет", "По возрастанию", "По убыванию"], state="readonly", width=15)
         sort_combo.pack(side=tk.LEFT, padx=(0,15))
 
         # Поставщик
@@ -500,7 +444,6 @@ class ProductsWindow(tk.Frame):
         category_combo.pack(side=tk.LEFT, padx=(0,5))
 
     def load_products(self):
-        # Очищаем предыдущие карточки
         for widget in self.scrollable_frame.winfo_children():
             widget.destroy()
 
@@ -512,14 +455,11 @@ class ProductsWindow(tk.Frame):
             LEFT JOIN manufacturers man ON p.manufacturer_id = man.id
             LEFT JOIN suppliers sup ON p.supplier_id = sup.id
         '''
-        conditions = []
-        params = []
+        conditions, params = [], []
 
         if hasattr(self, 'search_var') and self.search_var.get().strip():
             search = self.search_var.get().strip()
-            conditions.append('''
-                (p.article LIKE ? OR p.name LIKE ? OR p.description LIKE ? OR cat.name LIKE ? OR man.name LIKE ? OR sup.name LIKE ?)
-            ''')
+            conditions.append('(p.article LIKE ? OR p.name LIKE ? OR p.description LIKE ? OR cat.name LIKE ? OR man.name LIKE ? OR sup.name LIKE ?)')
             params.extend([f'%{search}%'] * 6)
 
         if hasattr(self, 'supplier_var') and self.supplier_var.get() != "Все поставщики":
@@ -534,15 +474,12 @@ class ProductsWindow(tk.Frame):
             query += " WHERE " + " AND ".join(conditions)
 
         if hasattr(self, 'sort_var'):
-            if self.sort_var.get() == "По возрастанию":
-                query += " ORDER BY p.quantity ASC"
-            elif self.sort_var.get() == "По убыванию":
-                query += " ORDER BY p.quantity DESC"
+            if self.sort_var.get() == "По возрастанию": query += " ORDER BY p.quantity ASC"
+            elif self.sort_var.get() == "По убыванию": query += " ORDER BY p.quantity DESC"
 
         try:
             cursor.execute(query, params)
             products = cursor.fetchall()
-            print(f"Найдено товаров: {len(products)}")
         except Exception as e:
             print("Ошибка при выполнении запроса:", e)
             products = []
@@ -553,38 +490,30 @@ class ProductsWindow(tk.Frame):
         self.scrollable_frame.update_idletasks()
         self.canvas.update_idletasks()
         bbox = self.canvas.bbox("all")
-        canvas_height = self.canvas.winfo_height()
-
-        if bbox and bbox[3] <= canvas_height:
+        if bbox and bbox[3] <= self.canvas.winfo_height():
             self.canvas.configure(scrollregion=bbox)
             self.scrollbar.pack_forget()
-            self.scroll_enabled = False
         else:
             self.canvas.configure(scrollregion=bbox)
             self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-            self.scroll_enabled = True
 
     def create_product_card(self, prod):
         card = tk.Frame(self.scrollable_frame, bg=COLOR_MAIN_BG, relief=tk.RAISED, bd=1)
         card.pack(fill=tk.X, padx=10, pady=5, ipadx=5, ipady=5)
 
         bg_color = COLOR_MAIN_BG
-        if prod["quantity"] == 0:
-            bg_color = COLOR_OUT_OF_STOCK
-        elif prod["discount"] > 15:
-            bg_color = COLOR_DISCOUNT_HIGH
+        if prod["quantity"] == 0: bg_color = COLOR_OUT_OF_STOCK
+        elif prod["discount"] > 15: bg_color = COLOR_DISCOUNT_HIGH
         card.config(bg=bg_color)
-
         
         img_frame = tk.Frame(card, bg=COLOR_MAIN_BG, width=120, height=120)
         img_frame.pack(side=tk.LEFT, padx=5, pady=5)
         img_frame.pack_propagate(False)
 
         img_path = prod['photo']
-        if img_path and os.path.exists(img_path):
-            pil_img = Image.open(img_path)
-        else:
-            pil_img = Image.open(DEFAULT_IMAGE)
+        if img_path and os.path.exists(img_path): pil_img = Image.open(img_path)
+        else: pil_img = Image.open(DEFAULT_IMAGE)
+        
         pil_img.thumbnail((120, 120), Image.Resampling.LANCZOS)
         photo = ImageTk.PhotoImage(pil_img)
         img_label = tk.Label(img_frame, image=photo, bg=COLOR_MAIN_BG)
@@ -594,46 +523,13 @@ class ProductsWindow(tk.Frame):
         text_frame = tk.Frame(card, bg=bg_color)
         text_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        category = prod["category_name"] or ""
-        name = prod["name"] or ""
-        tk.Label(
-            text_frame,
-            text=f"{category} | {name}",
-            font=("Times New Roman", 12, "bold"),
-            bg=bg_color,
-            anchor="w",
-        ).pack(anchor="w", fill=tk.X)
+        tk.Label(text_frame, text=f"{prod['category_name'] or ''} | {prod['name'] or ''}", font=FONT_BOLD, bg=bg_color, anchor="w").pack(anchor="w", fill=tk.X)
 
         desc = prod["description"] or ""
-        if len(desc) > 100:
-            desc = desc[:100] + "..."
-        tk.Label(
-            text_frame,
-            text=f"Описание товара: {desc}",
-            bg=bg_color,
-            font=("Times New Roman", 10),
-            wraplength=400,
-            justify=tk.LEFT,
-            anchor="w",
-        ).pack(anchor="w", fill=tk.X)
-
-        manufacturer = prod["manufacturer_name"] or ""
-        tk.Label(
-            text_frame,
-            text=f"Производитель: {manufacturer}",
-            bg=bg_color,
-            font=("Times New Roman", 10),
-            anchor="w",
-        ).pack(anchor="w", fill=tk.X)
-
-        supplier = prod["supplier_name"] or ""
-        tk.Label(
-            text_frame,
-            text=f"Поставщик: {supplier}",
-            bg=bg_color,
-            font=("Times New Roman", 10),
-            anchor="w",
-        ).pack(anchor="w", fill=tk.X)
+        if len(desc) > 100: desc = desc[:100] + "..."
+        tk.Label(text_frame, text=f"Описание товара: {desc}", bg=bg_color, font=FONT_SMALL, wraplength=400, justify=tk.LEFT, anchor="w").pack(anchor="w", fill=tk.X)
+        tk.Label(text_frame, text=f"Производитель: {prod['manufacturer_name'] or ''}", bg=bg_color, font=FONT_SMALL, anchor="w").pack(anchor="w", fill=tk.X)
+        tk.Label(text_frame, text=f"Поставщик: {prod['supplier_name'] or ''}", bg=bg_color, font=FONT_SMALL, anchor="w").pack(anchor="w", fill=tk.X)
 
         original_price = prod["price"]
         discount = prod["discount"] or 0
@@ -643,47 +539,13 @@ class ProductsWindow(tk.Frame):
         price_frame.pack(anchor="w", fill=tk.X, pady=2)
 
         if discount > 0:
-            old_price = tk.Label(
-                price_frame,
-                text=f"{original_price:.2f} руб.",
-                fg="red",
-                bg=bg_color,
-                font=("Times New Roman", 10, "overstrike"),
-            )
-            old_price.pack(side=tk.LEFT, padx=(0, 5))
-            new_price = tk.Label(
-                price_frame,
-                text=f"{final_price:.2f} руб.",
-                fg="black",
-                bg=bg_color,
-                font=("Times New Roman", 10, "bold"),
-            )
-            new_price.pack(side=tk.LEFT)
+            tk.Label(price_frame, text=f"{original_price:.2f} руб.", fg="red", bg=bg_color, font=("Times New Roman", 10, "overstrike")).pack(side=tk.LEFT, padx=(0, 5))
+            tk.Label(price_frame, text=f"{final_price:.2f} руб.", fg="black", bg=bg_color, font=FONT_SMALL_BOLD).pack(side=tk.LEFT)
         else:
-            tk.Label(
-                price_frame,
-                text=f"{original_price:.2f} руб.",
-                font=("Times New Roman", 10),
-                bg=bg_color,
-            ).pack(side=tk.LEFT)
+            tk.Label(price_frame, text=f"{original_price:.2f} руб.", font=FONT_SMALL, bg=bg_color).pack(side=tk.LEFT)
 
-        unit = prod["unit"] or ""
-        tk.Label(
-            text_frame,
-            text=f"Единица измерения: {unit}",
-            bg=bg_color,
-            font=("Times New Roman", 10),
-            anchor="w",
-        ).pack(anchor="w", fill=tk.X)
-
-        quantity = prod["quantity"]
-        tk.Label(
-            text_frame,
-            text=f"Количество на складе: {quantity}",
-            bg=bg_color,
-            font=("Times New Roman", 10),
-            anchor="w",
-        ).pack(anchor="w", fill=tk.X)
+        tk.Label(text_frame, text=f"Единица измерения: {prod['unit'] or ''}", bg=bg_color, font=FONT_SMALL, anchor="w").pack(anchor="w", fill=tk.X)
+        tk.Label(text_frame, text=f"Количество на складе: {prod['quantity']}", bg=bg_color, font=FONT_SMALL, anchor="w").pack(anchor="w", fill=tk.X)
 
         if discount > 0:
             disc_frame = tk.Frame(card, bg=COLOR_MAIN_BG, width=110, height=110, relief=tk.RIDGE, bd=2)
@@ -691,30 +553,14 @@ class ProductsWindow(tk.Frame):
             disc_frame.pack_propagate(False)
             inner_frame = tk.Frame(disc_frame, bg=COLOR_MAIN_BG)
             inner_frame.pack(expand=True)
-            tk.Label(inner_frame, text="Скидка", bg=COLOR_MAIN_BG,
-                    font=("Times New Roman", 10, "bold")).pack(anchor="center")
-            tk.Label(inner_frame, text=f"{int(discount)}%", bg=COLOR_MAIN_BG,
-                    font=("Times New Roman", 28, "bold"), fg="red").pack(anchor="center")
-        #else:
-            #disc_frame = tk.Frame(card, bg=bg_color, width=110)
-            #disc_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5, pady=5)
-            #disc_frame.pack_propagate(False)
+            tk.Label(inner_frame, text="Скидка", bg=COLOR_MAIN_BG, font=FONT_SMALL_BOLD).pack(anchor="center")
+            tk.Label(inner_frame, text=f"{int(discount)}%", bg=COLOR_MAIN_BG, font=("Times New Roman", 28, "bold"), fg="red").pack(anchor="center")
 
-        if self.app.current_user and self.app.current_user["role"] == "Администратор":
+        if self.app.current_user and self.app.current_user["role"] == ROLE_ADMIN:
             btn_frame = tk.Frame(text_frame, bg=bg_color)
             btn_frame.pack(anchor="e", pady=2, fill=tk.X)
-            tk.Button(
-                btn_frame,
-                text="Редактировать",
-                command=lambda p=prod: self.edit_product(p["article"]),
-                bg=COLOR_ACCENT,
-            ).pack(side=tk.LEFT, padx=2)
-            tk.Button(
-                btn_frame,
-                text="Удалить",
-                command=lambda p=prod: self.delete_product(p["article"]),
-                bg=COLOR_ACCENT,
-            ).pack(side=tk.LEFT, padx=2)
+            tk.Button(btn_frame, text="Редактировать", command=lambda p=prod: self.edit_product(p["article"]), bg=COLOR_ACCENT).pack(side=tk.LEFT, padx=2)
+            tk.Button(btn_frame, text="Удалить", command=lambda p=prod: self.delete_product(p["article"]), bg=COLOR_ACCENT).pack(side=tk.LEFT, padx=2)
 
     def logout(self):
         self.app.current_user = None
@@ -730,7 +576,7 @@ class ProductsWindow(tk.Frame):
         cursor = self.app.db.conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM order_items WHERE product_article=?", (article,))
         if cursor.fetchone()[0] > 0:
-            messagebox.showerror("Ошибка", "Нельзя удалить товар, который присутствует в заказах")
+            messagebox.showerror(TITLE_ERROR, "Нельзя удалить товар, который присутствует в заказах")
             return
         if messagebox.askyesno("Подтверждение", f"Удалить товар {article}?"):
             cursor.execute("DELETE FROM products WHERE article=?", (article,))
@@ -753,20 +599,17 @@ class OrdersWindow(tk.Frame):
         if self.app.current_user:
             user_text = f"{self.app.current_user['full_name']} ({self.app.current_user['role']})"
         
-        tk.Label(top_frame, text=user_text, bg=COLOR_EXTRA_BG, font=("Times New Roman", 12)).pack(side=tk.RIGHT, padx=10)
-
+        tk.Label(top_frame, text=user_text, bg=COLOR_EXTRA_BG, font=FONT_DEFAULT).pack(side=tk.RIGHT, padx=10)
         tk.Button(top_frame, text="Назад к товарам", command=self.app.show_products, bg=COLOR_ACCENT).pack(side=tk.LEFT, padx=10, pady=5)
         
-        if self.app.current_user and self.app.current_user["role"] == "Администратор":
+        if self.app.current_user and self.app.current_user["role"] == ROLE_ADMIN:
             tk.Button(top_frame, text="Добавить заказ", command=self.add_order, bg=COLOR_ACCENT).pack(side=tk.LEFT, padx=10, pady=5)
 
         self.canvas = tk.Canvas(self, bg=COLOR_MAIN_BG, highlightthickness=0)
         self.scrollbar = ttk.Scrollbar(self, orient=tk.VERTICAL, command=self.canvas.yview)
         self.scrollable_frame = tk.Frame(self.canvas, bg=COLOR_MAIN_BG)
 
-        self.scrollable_frame.bind(
-            "<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        )
+        self.scrollable_frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
@@ -791,45 +634,38 @@ class OrdersWindow(tk.Frame):
             
             rows = cursor.fetchall()
             if not rows:
-                tk.Label(self.scrollable_frame, text="Заказов пока нет", bg=COLOR_MAIN_BG, font=("Times New Roman", 14)).pack(pady=50)
+                tk.Label(self.scrollable_frame, text="Заказов пока нет", bg=COLOR_MAIN_BG, font=FONT_ENTRY).pack(pady=50)
                 return
 
             for row in rows:
                 self.create_order_card(row)
         except Exception as e:
-
             tk.Label(self.scrollable_frame, text=f"Ошибка базы данных: {e}", fg="red", bg=COLOR_MAIN_BG).pack()
 
     def create_order_card(self, row):
-        
         card = tk.Frame(self.scrollable_frame, bg=COLOR_MAIN_BG, relief=tk.RIDGE, bd=2)
         card.pack(fill=tk.X, padx=20, pady=10, ipady=10)
 
-        
         left_box = tk.Frame(card, bg=COLOR_MAIN_BG)
         left_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
 
-        tk.Label(left_box, text=f"Артикул заказа: {row[0]}", font=("Times New Roman", 12, "bold"), bg=COLOR_MAIN_BG, anchor="w").pack(fill=tk.X)
+        tk.Label(left_box, text=f"Артикул заказа: {row[0]}", font=FONT_BOLD, bg=COLOR_MAIN_BG, anchor="w").pack(fill=tk.X)
         tk.Label(left_box, text=f"Статус заказа: {row[6]}", font=("Times New Roman", 11), bg=COLOR_MAIN_BG, anchor="w").pack(fill=tk.X)
         
         addr = row[3] if row[3] else "Адрес не указан"
         tk.Label(left_box, text=f"Адрес пункта выдачи: {addr}", font=("Times New Roman", 11), bg=COLOR_MAIN_BG, anchor="w", wraplength=600).pack(fill=tk.X)
         tk.Label(left_box, text=f"Дата заказа: {row[1]}", font=("Times New Roman", 11), bg=COLOR_MAIN_BG, anchor="w").pack(fill=tk.X)
 
-        
         right_box = tk.Frame(card, bg=COLOR_MAIN_BG, relief=tk.SOLID, bd=1, width=150)
         right_box.pack(side=tk.RIGHT, fill=tk.Y, padx=10, pady=5)
         right_box.pack_propagate(False)
 
-        tk.Label(right_box, text="Дата доставки", font=("Times New Roman", 10), bg=COLOR_MAIN_BG).pack(pady=(5, 0))
+        tk.Label(right_box, text="Дата доставки", font=FONT_SMALL, bg=COLOR_MAIN_BG).pack(pady=(5, 0))
         tk.Label(right_box, text=f"{row[2]}", font=("Times New Roman", 11, "bold"), bg=COLOR_MAIN_BG).pack(expand=True)
 
-        
-        if self.app.current_user and self.app.current_user["role"] == "Администратор":
+        if self.app.current_user and self.app.current_user["role"] == ROLE_ADMIN:
             btn_frame = tk.Frame(left_box, bg=COLOR_MAIN_BG)
             btn_frame.pack(anchor="w", pady=(10, 0))
-            
-
             order_id = row[0]
             tk.Button(btn_frame, text="Редактировать", command=lambda i=order_id: OrderEditWindow(self.app, self, i), bg=COLOR_ACCENT).pack(side=tk.LEFT, padx=2)
             tk.Button(btn_frame, text="Удалить", command=lambda i=order_id: self.delete_order(i), bg=COLOR_ACCENT).pack(side=tk.LEFT, padx=2)
@@ -890,8 +726,7 @@ class ProductEditWindow(tk.Toplevel):
         tk.Label(main_frame, text="Артикул:").grid(row=0, column=0, sticky="w", pady=2)
         self.entry_article = tk.Entry(main_frame, state="readonly" if self.article else "normal")
         self.entry_article.grid(row=0, column=1, sticky="ew", pady=2)
-        if not self.article:
-            self.entry_article.insert(0, self.generate_article())
+        if not self.article: self.entry_article.insert(0, self.generate_article())
 
         tk.Label(main_frame, text="Наименование:").grid(row=1, column=0, sticky="w", pady=2)
         self.entry_name = tk.Entry(main_frame)
@@ -902,9 +737,7 @@ class ProductEditWindow(tk.Toplevel):
         self.combo_category.grid(row=2, column=1, sticky="ew", pady=2)
 
         tk.Label(main_frame, text="Производитель:").grid(row=3, column=0, sticky="w", pady=2)
-        self.combo_manufacturer = ttk.Combobox(
-            main_frame, values=self.manufacturers, state="normal"
-        )
+        self.combo_manufacturer = ttk.Combobox(main_frame, values=self.manufacturers, state="normal")
         self.combo_manufacturer.grid(row=3, column=1, sticky="ew", pady=2)
 
         tk.Label(main_frame, text="Поставщик:").grid(row=4, column=0, sticky="w", pady=2)
@@ -933,24 +766,16 @@ class ProductEditWindow(tk.Toplevel):
 
         tk.Label(main_frame, text="Фото:").grid(row=10, column=0, sticky="w", pady=2)
         self.photo_path = tk.StringVar()
-        tk.Entry(main_frame, textvariable=self.photo_path, state="readonly").grid(
-            row=10, column=1, sticky="ew", pady=2
-        )
-        tk.Button(main_frame, text="Выбрать файл", command=self.select_photo).grid(
-            row=10, column=2, padx=5
-        )
+        tk.Entry(main_frame, textvariable=self.photo_path, state="readonly").grid(row=10, column=1, sticky="ew", pady=2)
+        tk.Button(main_frame, text="Выбрать файл", command=self.select_photo).grid(row=10, column=2, padx=5)
 
         self.preview_label = tk.Label(main_frame, text="Предпросмотр")
         self.preview_label.grid(row=11, column=1, pady=5)
 
         btn_frame = tk.Frame(main_frame)
         btn_frame.grid(row=12, column=0, columnspan=3, pady=10)
-        tk.Button(btn_frame, text="Сохранить", command=self.save_product, bg=COLOR_ACCENT).pack(
-            side=tk.LEFT, padx=5
-        )
-        tk.Button(btn_frame, text="Отмена", command=self.on_close, bg=COLOR_EXTRA_BG).pack(
-            side=tk.LEFT, padx=5
-        )
+        tk.Button(btn_frame, text="Сохранить", command=self.save_product, bg=COLOR_ACCENT).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Отмена", command=self.on_close, bg=COLOR_EXTRA_BG).pack(side=tk.LEFT, padx=5)
 
         main_frame.columnconfigure(1, weight=1)
 
@@ -970,22 +795,18 @@ class ProductEditWindow(tk.Toplevel):
         while new_article in existing:
             next_num += 1
             new_article = f"A{next_num:03d}T4"
-        
         return new_article
 
     def load_product_data(self):
         cursor = self.app.db.conn.cursor()
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT p.*, cat.name as category_name, man.name as manufacturer_name, sup.name as supplier_name
             FROM products p
             LEFT JOIN categories cat ON p.category_id = cat.id
             LEFT JOIN manufacturers man ON p.manufacturer_id = man.id
             LEFT JOIN suppliers sup ON p.supplier_id = sup.id
             WHERE p.article = ?
-        """,
-            (self.article,),
-        )
+        """, (self.article,))
         prod = cursor.fetchone()
         if prod:
             self.entry_article.config(state="normal")
@@ -1005,9 +826,7 @@ class ProductEditWindow(tk.Toplevel):
             self.update_preview()
 
     def select_photo(self):
-        file_path = filedialog.askopenfilename(
-            filetypes=[("Image files", "*.jpg *.jpeg *.png *.bmp")]
-        )
+        file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.jpg *.jpeg *.png *.bmp")])
         if file_path:
             self.photo_path.set(file_path)
             self.update_preview()
@@ -1029,38 +848,26 @@ class ProductEditWindow(tk.Toplevel):
         category = self.combo_category.get().strip()
         manufacturer = self.combo_manufacturer.get().strip()
         supplier = self.combo_supplier.get().strip()
-        price = self.entry_price.get().strip()
+        price_str = self.entry_price.get().strip()
         unit = self.entry_unit.get().strip()
-        quantity = self.entry_quantity.get().strip()
-        discount = self.entry_discount.get().strip()
+        qty_str = self.entry_quantity.get().strip()
+        disc_str = self.entry_discount.get().strip()
         description = self.text_description.get("1.0", tk.END).strip()
         photo_src = self.photo_path.get().strip()
 
-        if not article or not name or not price:
-            messagebox.showerror(
-                "Ошибка", "Заполните обязательные поля (артикул, наименование, цена)"
-            )
+        if not article or not name or not price_str:
+            messagebox.showerror(TITLE_ERROR, "Заполните обязательные поля (артикул, наименование, цена)")
             return
+            
+        # Исправлено количество возвратов (qlty:return-statements) и голые Exception
         try:
-            price = float(price)
-            if price < 0:
+            price = float(price_str)
+            quantity = int(qty_str) if qty_str else 0
+            discount = float(disc_str) if disc_str else 0
+            if price < 0 or quantity < 0 or not (0 <= discount <= 100):
                 raise ValueError
-        except Exception:
-            messagebox.showerror("Ошибка", "Цена должна быть положительным числом")
-            return
-        try:
-            quantity = int(quantity) if quantity else 0
-            if quantity < 0:
-                raise ValueError
-        except Exception:
-            messagebox.showerror("Ошибка", "Количество должно быть целым неотрицательным числом")
-            return
-        try:
-            discount = float(discount) if discount else 0
-            if discount < 0 or discount > 100:
-                raise ValueError
-        except Exception:
-            messagebox.showerror("Ошибка", "Скидка должна быть числом от 0 до 100")
+        except ValueError:
+            messagebox.showerror(TITLE_ERROR, "Убедитесь, что цена и количество — положительные числа, а скидка от 0 до 100.")
             return
 
         final_photo_path = None
@@ -1079,15 +886,22 @@ class ProductEditWindow(tk.Toplevel):
             img.save(dest_path)
             final_photo_path = dest_path
 
+        # Избегаем B608 (SQL Injection) используя маппинг
         def get_or_create_id(table, name):
             if not name:
                 return None
             cursor = self.app.db.conn.cursor()
-            cursor.execute(f"SELECT id FROM {table} WHERE name=?", (name,))
+            queries = {
+                "categories": ("SELECT id FROM categories WHERE name=?", "INSERT INTO categories (name) VALUES (?)"),
+                "manufacturers": ("SELECT id FROM manufacturers WHERE name=?", "INSERT INTO manufacturers (name) VALUES (?)"),
+                "suppliers": ("SELECT id FROM suppliers WHERE name=?", "INSERT INTO suppliers (name) VALUES (?)")
+            }
+            sel_q, ins_q = queries[table]
+            cursor.execute(sel_q, (name,))
             row = cursor.fetchone()
             if row:
                 return row[0]
-            cursor.execute(f"INSERT INTO {table} (name) VALUES (?)", (name,))
+            cursor.execute(ins_q, (name,))
             return cursor.lastrowid
 
         cat_id = get_or_create_id("categories", category)
@@ -1096,45 +910,15 @@ class ProductEditWindow(tk.Toplevel):
 
         cursor = self.app.db.conn.cursor()
         if self.article:
-            cursor.execute(
-                """
+            cursor.execute("""
                 UPDATE products SET name=?, unit=?, price=?, category_id=?, manufacturer_id=?, supplier_id=?, discount=?, quantity=?, description=?, photo=?
                 WHERE article=?
-            """,
-                (
-                    name,
-                    unit,
-                    price,
-                    cat_id,
-                    man_id,
-                    sup_id,
-                    discount,
-                    quantity,
-                    description,
-                    final_photo_path,
-                    self.article,
-                ),
-            )
+            """, (name, unit, price, cat_id, man_id, sup_id, discount, quantity, description, final_photo_path, self.article))
         else:
-            cursor.execute(
-                """
+            cursor.execute("""
                 INSERT INTO products (article, name, unit, price, category_id, manufacturer_id, supplier_id, discount, quantity, description, photo)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    article,
-                    name,
-                    unit,
-                    price,
-                    cat_id,
-                    man_id,
-                    sup_id,
-                    discount,
-                    quantity,
-                    description,
-                    final_photo_path,
-                ),
-            )
+            """, (article, name, unit, price, cat_id, man_id, sup_id, discount, quantity, description, final_photo_path))
 
         self.app.db.conn.commit()
         self.parent.load_products()
@@ -1158,11 +942,7 @@ class OrderEditWindow(tk.Toplevel):
         self.transient(app)
         self.grab_set()
 
-        if (
-            hasattr(app, "order_edit_window")
-            and app.order_edit_window
-            and app.order_edit_window.winfo_exists()
-        ):
+        if hasattr(app, "order_edit_window") and app.order_edit_window and app.order_edit_window.winfo_exists():
             messagebox.showwarning("Предупреждение", "Окно редактирования заказа уже открыто")
             self.destroy()
             return
@@ -1204,15 +984,11 @@ class OrderEditWindow(tk.Toplevel):
         self.entry_delivery_date.grid(row=2, column=1, sticky="ew", pady=2)
 
         tk.Label(main_frame, text="Адрес пункта выдачи:").grid(row=3, column=0, sticky="w", pady=2)
-        self.combo_address = ttk.Combobox(
-            main_frame, values=[f"{a['id']}: {a['address']}" for a in self.addresses]
-        )
+        self.combo_address = ttk.Combobox(main_frame, values=[f"{a['id']}: {a['address']}" for a in self.addresses])
         self.combo_address.grid(row=3, column=1, sticky="ew", pady=2)
 
         tk.Label(main_frame, text="Клиент:").grid(row=4, column=0, sticky="w", pady=2)
-        self.combo_user = ttk.Combobox(
-            main_frame, values=[f"{u['id']}: {u['full_name']}" for u in self.users]
-        )
+        self.combo_user = ttk.Combobox(main_frame, values=[f"{u['id']}: {u['full_name']}" for u in self.users])
         self.combo_user.grid(row=4, column=1, sticky="ew", pady=2)
 
         tk.Label(main_frame, text="Код для получения:").grid(row=5, column=0, sticky="w", pady=2)
@@ -1223,35 +999,26 @@ class OrderEditWindow(tk.Toplevel):
         self.combo_status = ttk.Combobox(main_frame, values=self.statuses)
         self.combo_status.grid(row=6, column=1, sticky="ew", pady=2)
 
-        tk.Label(main_frame, text="Состав заказа (артикул, количество; через запятую):").grid(
-            row=7, column=0, sticky="w", pady=2
-        )
+        tk.Label(main_frame, text="Состав заказа (артикул, количество; через запятую):").grid(row=7, column=0, sticky="w", pady=2)
         self.text_items = tk.Text(main_frame, height=5, width=40)
         self.text_items.grid(row=7, column=1, sticky="ew", pady=2)
 
         btn_frame = tk.Frame(main_frame)
         btn_frame.grid(row=8, column=0, columnspan=2, pady=10)
-        tk.Button(btn_frame, text="Сохранить", command=self.save_order, bg=COLOR_ACCENT).pack(
-            side=tk.LEFT, padx=5
-        )
-        tk.Button(btn_frame, text="Отмена", command=self.on_close, bg=COLOR_EXTRA_BG).pack(
-            side=tk.LEFT, padx=5
-        )
+        tk.Button(btn_frame, text="Сохранить", command=self.save_order, bg=COLOR_ACCENT).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Отмена", command=self.on_close, bg=COLOR_EXTRA_BG).pack(side=tk.LEFT, padx=5)
 
         main_frame.columnconfigure(1, weight=1)
 
     def load_order_data(self):
         cursor = self.app.db.conn.cursor()
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT o.*, a.address, u.full_name
             FROM orders o
             LEFT JOIN addresses a ON o.address_id = a.id
             LEFT JOIN users u ON o.user_id = u.id
             WHERE o.id = ?
-        """,
-            (self.order_id,),
-        )
+        """, (self.order_id,))
         order = cursor.fetchone()
         if order:
             self.entry_id.config(state="normal")
@@ -1262,28 +1029,44 @@ class OrderEditWindow(tk.Toplevel):
             self.entry_order_date.insert(0, order["order_date"] or "")
             self.entry_delivery_date.delete(0, tk.END)
             self.entry_delivery_date.insert(0, order["delivery_date"] or "")
-            if order["address_id"]:
-                self.combo_address.set(f"{order['address_id']}: {order['address']}")
-            if order["user_id"]:
-                self.combo_user.set(f"{order['user_id']}: {order['full_name']}")
+            if order["address_id"]: self.combo_address.set(f"{order['address_id']}: {order['address']}")
+            if order["user_id"]: self.combo_user.set(f"{order['user_id']}: {order['full_name']}")
             self.entry_code.delete(0, tk.END)
             self.entry_code.insert(0, order["pickup_code"] or "")
             self.combo_status.set(order["status"] or "")
 
-            cursor.execute(
-                "SELECT product_article, quantity FROM order_items WHERE order_id=?",
-                (self.order_id,),
-            )
+            cursor.execute("SELECT product_article, quantity FROM order_items WHERE order_id=?", (self.order_id,))
             items = cursor.fetchall()
             items_str = ", ".join([f"{it['product_article']}, {it['quantity']}" for it in items])
             self.text_items.insert("1.0", items_str)
 
+    # Исправление qlty:function-complexity. Вынесли парсинг в отдельный метод.
+    def _parse_order_items(self, items_str):
+        items = []
+        if not items_str:
+            return items
+            
+        parts = [p.strip() for p in items_str.split(',')]
+        if len(parts) % 2 != 0:
+            raise ValueError("Нечетное количество элементов в составе заказа. Должны быть пары: артикул, количество")
+            
+        for i in range(0, len(parts), 2):
+            article = parts[i]
+            try:
+                qty = int(parts[i+1])
+            except ValueError:
+                raise ValueError(f"Количество для артикула {article} должно быть целым числом")
+            items.append((article, qty))
+            
+        return items
+
     def save_order(self):
         try:
             order_id = int(self.entry_id.get())
-        except:
-            messagebox.showerror("Ошибка", "Некорректный номер заказа")
+        except ValueError: # Исправлено E722
+            messagebox.showerror(TITLE_ERROR, "Некорректный номер заказа")
             return
+            
         order_date = self.entry_order_date.get().strip()
         delivery_date = self.entry_delivery_date.get().strip()
         address_text = self.combo_address.get().strip()
@@ -1292,34 +1075,21 @@ class OrderEditWindow(tk.Toplevel):
         status = self.combo_status.get().strip()
         items_str = self.text_items.get("1.0", tk.END).strip()
 
-        address_id = None
-        if address_text and ":" in address_text:
-            address_id = int(address_text.split(":")[0])
-        user_id = None
-        if user_text and ":" in user_text:
-            user_id = int(user_text.split(":")[0])
+        address_id = int(address_text.split(":")[0]) if address_text and ":" in address_text else None
+        user_id = int(user_text.split(":")[0]) if user_text and ":" in user_text else None
 
-        items = []
-        if items_str:
-            parts = [p.strip() for p in items_str.split(',')]
-            if len(parts) % 2 != 0:
-                messagebox.showerror("Ошибка", "Нечетное количество элементов в составе заказа. Должны быть пары артикул, количество")
-                return
-            for i in range(0, len(parts), 2):
-                article = parts[i]
-                try:
-                    qty = int(parts[i+1])
-                except:
-                    messagebox.showerror("Ошибка", f"Количество для артикула {article} должно быть целым числом")
-                    return
-                items.append((article, qty))
+        # Использование хелпера для снижения сложности функции (qlty:function-complexity)
+        try:
+            items = self._parse_order_items(items_str)
+        except ValueError as e:
+            messagebox.showerror(TITLE_ERROR, str(e))
+            return
 
-        # Проверка наличия всех артикулов в базе
         cursor = self.app.db.conn.cursor()
         for article, _ in items:
             cursor.execute("SELECT article FROM products WHERE article=?", (article,))
             if not cursor.fetchone():
-                messagebox.showerror("Ошибка", f"Товар с артикулом '{article}' не найден в базе")
+                messagebox.showerror(TITLE_ERROR, f"Товар с артикулом '{article}' не найден в базе")
                 return
 
         cursor = self.app.db.conn.cursor()
@@ -1336,9 +1106,7 @@ class OrderEditWindow(tk.Toplevel):
             ''', (order_id, order_date, delivery_date, address_id, user_id, code, status))
 
         for article, qty in items:
-            cursor.execute('''
-                INSERT INTO order_items (order_id, product_article, quantity) VALUES (?, ?, ?)
-            ''', (order_id, article, qty))
+            cursor.execute("INSERT INTO order_items (order_id, product_article, quantity) VALUES (?, ?, ?)", (order_id, article, qty))
 
         self.app.db.conn.commit()
         self.parent.load_orders()
